@@ -1,0 +1,21 @@
+% ==============================================================================  
+% FIELD GRID (TAGGED)  
+% ==============================================================================  
+  
+\newenvironment{FieldGrid}  
+{  
+  \par\vspace{0.5em}  
+  \renewcommand{\arraystretch}{1.6}  
+  \noindent  
+  \tagstructbegin{tag=Table}  
+  \begin{tabular}  
+    {@{}  
+     >{\raggedright\sffamily\small\bfseries\color{OxfordBlue}}m{4cm}  
+     >{\raggedright\sffamily\small\arraybackslash}m{11cm}  
+     @{}}%  
+}  
+{  
+  \end{tabular}  
+  \tagstructend  
+  \par\vspace{1em}  
+}  

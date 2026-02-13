@@ -1,0 +1,38 @@
+{  
+  "name": "Alexandra M. Keller",  
+  "email": "alexandra.keller@example.com",  
+  
+  "case_ref": "ETK-2026-001",  
+  "case_subject": "Determination of pension insurance obligations",  
+  "doc_date": "9 February 2026",  
+  
+  "status": "CONFIRMED",  
+  
+  "financials": [  
+    {  
+      "year": 2023,  
+      "income": 55000.00,  
+      "expenses": 12000.00,  
+      "taxable": 43000.00  
+    },  
+    {  
+      "year": 2024,  
+      "income": 60000.00,  
+      "expenses": 15000.00,  
+      "taxable": 45000.00  
+    }  
+  ],  
+  
+  "totals": {  
+    "income": 115000.00,  
+    "expenses": 27000.00,  
+    "taxable": 88000.00  
+  },  
+  
+  "attachments": [  
+    {  
+      "label": "Attachment 1",  
+      "description": "Annual income statement"  
+    }  
+  ]  
+}  

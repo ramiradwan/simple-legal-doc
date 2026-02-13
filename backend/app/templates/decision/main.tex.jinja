@@ -1,0 +1,19 @@
+% !TeX program = lualatex  
+  
+\BLOCK{ include "decision/preamble.tex.jinja" }  
+  
+\begin{document}  
+  
+% ------------------------------------------------------------------  
+% PDF/A-3 META ATTACHMENTS  
+% (machine-readable, not part of document content)  
+% ------------------------------------------------------------------  
+\EmbedMetaAttachment  
+  {semantic-payload.json}  
+  {Canonical semantic payload used to generate this document}  
+  {application/json}  
+  {Data}  
+  
+\BLOCK{ include "decision/layout.tex.jinja" }  
+  
+\end{document}  

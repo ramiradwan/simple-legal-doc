@@ -1,0 +1,66 @@
+% ==============================================================================  
+% HEADER  
+% ==============================================================================  
+  
+\noindent  
+\begin{minipage}{0.6\textwidth}  
+  {\sffamily\bfseries\large\color{OxfordBlue} PENSION SECURITY CENTRE}\\  
+  {\sffamily\small Legal Department / Supervision}  
+\end{minipage}  
+\begin{minipage}{0.4\textwidth}  
+  \raggedleft  
+  {\rmfamily\scshape\large Response to Request for Clarification}\\  
+  {\sffamily\small \DocDate}  
+\end{minipage}  
+  
+\vspace{1.2cm}  
+  
+{\sffamily\small\bfseries SUBJECT}\quad \CaseSubject\\  
+{\sffamily\small\bfseries REFERENCE}\quad \CaseRef  
+  
+% ==============================================================================  
+% PARTY DETAILS  
+% ==============================================================================  
+  
+\section*{Party Details}  
+  
+\begin{FieldGrid}  
+Respondent        & \MyName \\  
+Contact Information & \texttt{\MyEmail} \\  
+Case Status       & \StatusPill{\VAR{status}} \\  
+Client Reference  & \CaseRef  
+\end{FieldGrid}  
+  
+% ==============================================================================  
+% CONTENT  
+% ==============================================================================  
+  
+\section*{Statement and Grounds}  
+  
+\subsection*{Financial Breakdown}  
+  
+\FinancialTable  
+  
+% ==============================================================================  
+% SIGNATURE  
+% ==============================================================================  
+  
+\vspace{2cm}  
+  
+Tampere\\[1em]  
+\textbf{\MyName}\\  
+{\sffamily\tiny Electronically signed / \DocHash}  
+  
+% ==============================================================================  
+% ATTACHMENTS  
+% ==============================================================================  
+  
+\vfill  
+\section*{Attachments}  
+  
+\begin{description}  
+\BLOCK{for a in attachments}  
+  \item[\sffamily\color{OxfordBlue} \VAR{a.label}]  
+  \VAR{a.description}  
+\BLOCK{endfor}  
+\end{description}  

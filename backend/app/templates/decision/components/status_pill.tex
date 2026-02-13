@@ -1,0 +1,41 @@
+% ==============================================================================  
+% STATUS PILL (TAGGED INLINE SPAN)  
+% ==============================================================================  
+  
+\ExplSyntaxOn  
+  
+\NewDocumentCommand{\StatusPill}{m}  
+{  
+  \tagstructbegin{tag=Span}  
+  \tcbox[  
+    nobeforeafter,  
+    boxrule=0pt,  
+    arc=1pt,  
+    colframe=OxfordBlue!15,  
+    fontupper=\sffamily\bfseries\tiny,  
+    left=4pt,  
+    right=4pt,  
+    top=2pt,  
+    bottom=2pt,  
+    colback=  
+      \str_case:nnF {#1}  
+        {  
+          {CONFIRMED}{OxfordBlue!6}  
+          {PENDING}{yellow!15}  
+          {OVERDUE}{red!15}  
+        }  
+        {OxfordBlue!6}  
+  ]  
+  {  
+    \str_case:nnF {#1}  
+      {  
+        {CONFIRMED}{CONFIRMED}  
+        {PENDING}{PENDING}  
+        {OVERDUE}{OVERDUE}  
+      }  
+      {UNKNOWN}  
+  }  
+  \tagstructend  
+}  
+  
+\ExplSyntaxOff  

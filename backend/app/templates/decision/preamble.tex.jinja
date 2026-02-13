@@ -1,0 +1,159 @@
+\RequirePackage{pdfmanagement-testphase}  
+  
+% ==============================================================================  
+% FORCE PDF 1.7 (BEST EFFORT — PDF MANAGEMENT MAY OVERRIDE)  
+% MUST BE FIRST  
+% ==============================================================================  
+  
+\pdfvariable minorversion=7  
+\pdfvariable compresslevel=9  
+  
+% ==============================================================================  
+% ARCHIVAL METADATA (PDF/A-3B — CLAIMED)  
+% ==============================================================================  
+  
+\DocumentMetadata{  
+  pdfstandard = A-3b,  
+  lang        = en-US  
+}  
+  
+% ==============================================================================  
+% ENABLE TAGGING FOR CORRECT READING ORDER  
+% ==============================================================================  
+  
+\tagpdfsetup{  
+  activate=true,  
+  uncompress,  
+  tabsorder=structure  
+}  
+  
+% ==============================================================================  
+% DOCUMENT CLASS  
+% ==============================================================================  
+  
+\documentclass[  
+  a4paper,  
+  11pt,  
+  parskip=half,  
+  numbers=noenddot  
+]{scrartcl}  
+  
+% ==============================================================================  
+% GEOMETRY  
+% ==============================================================================  
+  
+\usepackage[  
+  top=3cm,  
+  bottom=3.5cm,  
+  left=3cm,  
+  right=3cm,  
+  heightrounded  
+]{geometry}  
+  
+% ==============================================================================  
+% ENGINE VARIABLES (JINJA)  
+% ==============================================================================  
+  
+\newcommand{\MyName}{\VAR{name}}  
+\newcommand{\MyEmail}{\VAR{email}}  
+\newcommand{\CaseRef}{\VAR{case_ref}}  
+\newcommand{\CaseSubject}{\VAR{case_subject}}  
+\newcommand{\DocDate}{\VAR{doc_date}}  
+\newcommand{\DocHash}{\VAR{document_hash}}  
+  
+% ==============================================================================  
+% TYPOGRAPHY  
+% ==============================================================================  
+  
+\usepackage{fontspec}  
+\usepackage[english]{babel}  
+\usepackage{microtype}  
+\usepackage{xcolor}  
+\usepackage{setspace}  
+  
+\setmainfont{TeX Gyre Schola}[Numbers={Lining,Proportional}]  
+\setsansfont{TeX Gyre Heros}[Scale=MatchLowercase]  
+\setmonofont{TeX Gyre Cursor}[Scale=MatchLowercase]  
+  
+\setstretch{1.2}  
+  
+% ==============================================================================  
+% COLORS  
+% ==============================================================================  
+  
+\definecolor{OxfordBlue}{HTML}{002147}  
+\definecolor{OxfordCoolGrey}{HTML}{F2F7F6}  
+  
+\addtokomafont{section}{\color{OxfordBlue}\rmfamily\scshape\Large}  
+\addtokomafont{subsection}{\color{OxfordBlue}\sffamily\bfseries}  
+  
+% ==============================================================================  
+% LEFT MARGIN DIGITAL SIGNATURE STRIP (ARTIFACT — NOT READABLE TEXT)  
+% ==============================================================================  
+  
+\usepackage{eso-pic,picture,rotating}  
+  
+\AddToShipoutPictureBG{  
+  \tagstructbegin{tag=Artifact}  
+  \AtPageLowerLeft{  
+    \put(20,300){  
+      \rotatebox{90}{  
+        \ttfamily\tiny\color{OxfordBlue!35}  
+        DIGITAL SIGNATURE: \DocHash \quad | \quad ARCHIVAL: PDF/A-3B  
+      }  
+    }  
+  }  
+  \tagstructend  
+}  
+  
+% ==============================================================================  
+% UI + TABLE INFRASTRUCTURE  
+% ==============================================================================  
+  
+\usepackage{booktabs}  
+\usepackage{colortbl}  
+\usepackage{array}  
+\usepackage{siunitx}  
+\usepackage[most]{tcolorbox}  
+\usepackage{xparse}  
+  
+\sisetup{  
+  detect-all,  
+  output-decimal-marker={,}, % locale-neutral decimal comma retained intentionally  
+  group-separator={\,},  
+  group-minimum-digits=4  
+}  
+  
+% ==============================================================================  
+% COMPONENTS (layout + semantic macros)  
+% ==============================================================================  
+  
+\input{decision/components/status_pill}  
+\input{decision/components/field_grid}  
+\BLOCK{ include "decision/components/financial_table.tex.jinja" }  
+  
+% ------------------------------------------------------------------  
+% PDF/A META-ATTACHMENT MACROS (no package loading here)  
+% ------------------------------------------------------------------  
+  
+\input{decision/components/meta_attachments}  
+  
+% ==============================================================================  
+% HYPERREF (PDF/A-SAFE, TAGGING-COMPATIBLE)  
+% ==============================================================================  
+  
+\usepackage{hyperref}  
+  
+\hypersetup{  
+  pdftitle           = {\CaseSubject},  
+  pdfauthor          = {\MyName},  
+  pdfmetalang        = {en},  
+  pdfdisplaydoctitle = true,  
+  colorlinks         = true,  
+  linkcolor          = OxfordBlue,  
+  urlcolor           = OxfordBlue,  
+  pdfencoding        = auto,  
+  psdextra  
+}  
+  
+\usepackage{embedfile}  

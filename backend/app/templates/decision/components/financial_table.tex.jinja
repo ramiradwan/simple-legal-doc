@@ -1,0 +1,46 @@
+% ==============================================================================  
+% FINANCIAL TABLE (TAGGED)  
+% ==============================================================================  
+  
+\newcommand{\FinancialTable}{%  
+  \renewcommand{\arraystretch}{1.35}%  
+  \begin{center}%  
+  \tagstructbegin{tag=Table}%  
+  \begin{tabular}  
+    {@{}l  
+     S[table-format=5.2]  
+     S[table-format=4.2]  
+     S[table-format=5.2]  
+     @{}}%  
+  \toprule  
+  \tagstructbegin{tag=TR}  
+    \tagstructbegin{tag=TH}{\sffamily Year}\tagstructend &  
+    \tagstructbegin{tag=TH}{\sffamily Income (€)}\tagstructend &  
+    \tagstructbegin{tag=TH}{\sffamily Expenses (€)}\tagstructend &  
+    \tagstructbegin{tag=TH}{\sffamily Taxable (€)}\tagstructend  
+  \tagstructend \\%  
+  \midrule  
+  
+  \BLOCK{for row in financials}  
+  \tagstructbegin{tag=TR}  
+    \tagstructbegin{tag=TD}\VAR{row.year}\tagstructend &  
+    \tagstructbegin{tag=TD}\num{\VAR{row.income}}\tagstructend &  
+    \tagstructbegin{tag=TD}\num{\VAR{row.expenses}}\tagstructend &  
+    \tagstructbegin{tag=TD}\num{\VAR{row.taxable}}\tagstructend  
+  \tagstructend \\%  
+  \BLOCK{endfor}  
+  
+  \addlinespace[0.4em]  
+  \rowcolor{OxfordCoolGrey}  
+  \tagstructbegin{tag=TR}  
+    \tagstructbegin{tag=TH}\bfseries Total\tagstructend &  
+    \tagstructbegin{tag=TD}\num{\VAR{totals.income}}\tagstructend &  
+    \tagstructbegin{tag=TD}\num{\VAR{totals.expenses}}\tagstructend &  
+    \tagstructbegin{tag=TD}\num{\VAR{totals.taxable}}\tagstructend  
+  \tagstructend \\%  
+    
+  \bottomrule  
+  \end{tabular}%  
+  \tagstructend%  
+  \end{center}%  
+}  

@@ -1,0 +1,57 @@
+version: "3.8"  
+  
+services:  
+  backend:  
+    build:  
+      context: .  
+      dockerfile: backend/Dockerfile  
+    image: simple-legal-doc-backend  
+    ports:  
+      - "8000:8000"  
+    environment:  
+      - TEMPLATE_DIR=/app/app/templates  
+  
+      # --------------------------------------------------  
+      # Signing backend selection (explicit)  
+      # --------------------------------------------------  
+      - SIGNING_BACKEND=${SIGNING_BACKEND:-}  
+      - SIGNING_HTTP_URL=http://signer:8080/sign-archival  
+  
+      # Local dev signing  
+      - SIGNING_P12_PATH=/run/dev-cert/dev-signing.p12  
+      - SIGNING_P12_PASSWORD=dev-only  
+  
+    volumes:  
+      # DEV ONLY: hot reload templates  
+      - ./backend/app/templates:/app/app/templates  
+  
+    restart: unless-stopped  
+  
+  frontend:  
+    build:  
+      context: ./frontend  
+      dockerfile: Dockerfile  
+    image: simple-legal-doc-frontend  
+    ports:  
+      - "5173:80"  
+    environment:  
+      - VITE_API_BASE_URL=http://backend:8000  
+    depends_on:  
+      - backend  
+    restart: unless-stopped  
+  
+  signer:  
+    profiles: ["trusted"]  
+    build:  
+      context: ./signer  
+      dockerfile: Dockerfile  
+    image: simple-legal-doc-signer  
+    ports:  
+      - "8081:8080"  
+    environment:  
+      - AZURE_TRUSTED_SIGNING_ACCOUNT=${AZURE_TRUSTED_SIGNING_ACCOUNT}  
+      - AZURE_TRUSTED_SIGNING_PROFILE=${AZURE_TRUSTED_SIGNING_PROFILE}  
+      - AZURE_CLIENT_ID=${AZURE_CLIENT_ID}  
+      - AZURE_TENANT_ID=${AZURE_TENANT_ID}  
+      - AZURE_CLIENT_SECRET=${AZURE_CLIENT_SECRET}  
+    restart: unless-stopped  
