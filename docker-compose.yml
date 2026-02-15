@@ -55,3 +55,14 @@ services:
       - AZURE_TENANT_ID=${AZURE_TENANT_ID}  
       - AZURE_CLIENT_SECRET=${AZURE_CLIENT_SECRET}  
     restart: unless-stopped  
+
+  auditor:  
+    build:  
+      context: .  
+      dockerfile: auditor/Dockerfile  
+    image: simple-legal-doc-auditor  
+    volumes:  
+      - ./auditor:/app/auditor  
+    working_dir: /app  
+    ports:  
+      - "8001:8000"  
