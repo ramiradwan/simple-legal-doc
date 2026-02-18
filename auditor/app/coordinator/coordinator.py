@@ -12,13 +12,14 @@ It MUST NOT:
   
 Its sole responsibilities are:  
 - enforcing execution order  
-- enforcing trust boundaries  
+- enforcing hard stop conditions  
 - aggregating results  
+- constructing the final VerificationReport  
 """  
   
 from __future__ import annotations  
   
-from typing import List  
+from typing import List, Optional  
   
 from auditor.app.config import AuditorConfig  
 from auditor.app.schemas.verification_report import (  
@@ -26,21 +27,12 @@ from auditor.app.schemas.verification_report import (
     AuditStatus,  
     DeliveryRecommendation,  
     ArtifactIntegrityResult,  
-    LDVPResult,  
+    SemanticAuditResult,  
     SealTrustResult,  
 )  
-  
-from auditor.app.schemas.findings import (  
-    FindingObject as Finding,  
-    Severity,  
-    FindingSource,  
-    FindingCategory,  
-    ConfidenceLevel,  
-    FindingStatus,  
+from auditor.app.coordinator.artifact_integrity_audit import (  
+    ArtifactIntegrityAudit,  
 )  
-  
-from auditor.app.coordinator.artifact_integrity_audit import ArtifactIntegrityAudit  
-from auditor.app.coordinator.ldvp_pipeline import LDVPPipeline  
   
   
 class AuditorCoordinator:  
@@ -48,64 +40,90 @@ class AuditorCoordinator:
     Central verification coordinator.  
   
     Execution order:  
-    1. Artifact Integrity Audit (AIA) — deterministic, mandatory  
-    2. Legal Document Verification Protocol (LDVP) — probabilistic  
-    3. Seal Trust Verification (STV) — optional, deterministic  
+    1. Artifact Integrity Audit (deterministic, mandatory)  
+    2. Semantic Audit Protocol(s) (probabilistic, advisory)  
+    3. Seal Trust Verification (deterministic, optional)  
     """  
   
-    def __init__(self, config: AuditorConfig):  
+    def __init__(  
+        self,  
+        config: AuditorConfig,  
+        artifact_integrity_audit: Optional[ArtifactIntegrityAudit] = None,  
+        semantic_audit_pipeline: Optional[object] = None,  
+        seal_trust_verifier: Optional[object] = None,  
+    ) -> None:  
+        """  
+        Direct constructor.  
+  
+        Intended for tests and explicit wiring.  
+        No semantic audit pipelines are constructed implicitly.  
+        """  
+  
         self._config = config  
-        self._artifact_integrity_audit = ArtifactIntegrityAudit(config)  
-        self._ldvp_pipeline = LDVPPipeline()  
+  
+        self._artifact_integrity_audit = (  
+            artifact_integrity_audit  
+            if artifact_integrity_audit is not None  
+            else ArtifactIntegrityAudit(config=config)  
+        )  
+  
+        self._semantic_audit_pipeline = semantic_audit_pipeline  
+        self._seal_trust_verifier = seal_trust_verifier  
+  
+    # ------------------------------------------------------------------  
+    # Integration constructor (composition root)  
+    # ------------------------------------------------------------------  
+    @classmethod  
+    def from_config(cls, config: AuditorConfig) -> "AuditorCoordinator":  
+        """  
+        Construct a fully wired AuditorCoordinator from runtime configuration.  
+  
+        NOTE:  
+        Semantic audit pipelines are NOT constructed here.  
+        They must be injected by an integration layer if enabled.  
+        """  
+  
+        artifact_integrity_audit = ArtifactIntegrityAudit(config=config)  
+  
+        semantic_audit_pipeline = None  
+  
+        if config.ENABLE_SEAL_TRUST_VERIFICATION:  
+            from auditor.app.coordinator.seal_trust_verification import (  
+                SealTrustVerification,  
+            )  
+  
+            seal_trust_verifier = SealTrustVerification()  
+        else:  
+            seal_trust_verifier = None  
+  
+        return cls(  
+            config=config,  
+            artifact_integrity_audit=artifact_integrity_audit,  
+            semantic_audit_pipeline=semantic_audit_pipeline,  
+            seal_trust_verifier=seal_trust_verifier,  
+        )  
   
     # ------------------------------------------------------------------  
     # Public API  
     # ------------------------------------------------------------------  
+    def run_audit(self, *, pdf_bytes: bytes, audit_id: str) -> VerificationReport:  
+        """  
+        Execute the full audit pipeline for a finalized PDF artifact.  
+        """  
   
-    def run_audit(self, pdf_bytes: bytes, audit_id: str) -> VerificationReport:  
-        """Execute the full audit pipeline for a finalized PDF artifact."""  
-  
-        all_findings: List[Finding] = []  
+        all_findings = []  
   
         # --------------------------------------------------------------  
-        # 1. Artifact Integrity Audit (AIA)  
+        # 1. Artifact Integrity Audit (HARD GATE)  
         # --------------------------------------------------------------  
-        if not self._config.ENABLE_ARTIFACT_INTEGRITY_AUDIT:  
-            aia_result = ArtifactIntegrityResult(  
-                passed=False,  
-                checks_executed=[],  
-                findings=[  
-                    Finding(  
-                        finding_id="AIA-CRIT-000",  
-                        source=FindingSource.ARTIFACT_INTEGRITY,  
-                        category=FindingCategory.COMPLIANCE,  
-                        severity=Severity.CRITICAL,  
-                        confidence=ConfidenceLevel.HIGH,  
-                        status=FindingStatus.OPEN,  
-                        title="Artifact integrity audit disabled",  
-                        description=(  
-                            "Artifact integrity verification is disabled by "  
-                            "runtime configuration."  
-                        ),  
-                        why_it_matters=(  
-                            "Without artifact integrity verification, the "  
-                            "authenticity and immutability of the document "  
-                            "cannot be established."  
-                        ),  
-                    )  
-                ],  
-            )  
-        else:  
-            aia_result = self._artifact_integrity_audit.run(pdf_bytes)  
+        artifact_integrity = self._artifact_integrity_audit.run(pdf_bytes)  
+        all_findings.extend(artifact_integrity.findings)  
   
-        all_findings.extend(aia_result.findings)  
-  
-        if not aia_result.passed:  
-            # HARD STOP — no downstream analysis permitted  
+        if not artifact_integrity.passed:  
             return self._finalize_report(  
                 audit_id=audit_id,  
-                artifact_integrity=aia_result,  
-                ldvp=self._ldvp_not_executed(),  
+                artifact_integrity=artifact_integrity,  
+                semantic_audit=self._semantic_not_executed(),  
                 seal_trust=self._seal_trust_not_executed(),  
                 findings=all_findings,  
                 status=AuditStatus.FAIL,  
@@ -113,60 +131,57 @@ class AuditorCoordinator:
             )  
   
         # --------------------------------------------------------------  
-        # 2. Legal Document Verification Protocol (LDVP)  
+        # 2. Semantic Audit (ADVISORY)  
         # --------------------------------------------------------------  
-        if not self._config.ENABLE_LDVP:  
-            ldvp_result = self._ldvp_not_executed()  
+        if self._semantic_audit_pipeline is None:  
+            semantic_audit = self._semantic_not_executed()  
         else:  
-            ldvp_result = self._ldvp_pipeline.run(  
-                extracted_text=aia_result.extracted_text,  
-                semantic_payload=aia_result.semantic_payload,  
+            semantic_audit = self._semantic_audit_pipeline.run(  
+                embedded_text=artifact_integrity.embedded_text,  
+                embedded_payload=artifact_integrity.embedded_payload,  
+                visible_text=artifact_integrity.visible_text,  
             )  
   
-        all_findings.extend(ldvp_result.findings)  
+        all_findings.extend(semantic_audit.findings)  
   
         # --------------------------------------------------------------  
-        # 3. Seal Trust Verification (optional)  
+        # 3. Seal Trust Verification (OPTIONAL HARD GATE)  
         # --------------------------------------------------------------  
-        if not self._config.ENABLE_SEAL_TRUST_VERIFICATION:  
-            seal_trust_result = self._seal_trust_not_executed()  
+        if self._seal_trust_verifier is None:  
+            seal_trust = self._seal_trust_not_executed()  
         else:  
-            seal_trust_result = SealTrustResult(  
-                executed=True,  
-                trusted=True,  
-                findings=[],  
-            )  
+            seal_trust = self._seal_trust_verifier.run(pdf_bytes)  
   
-        all_findings.extend(seal_trust_result.findings)  
+        all_findings.extend(seal_trust.findings)  
   
         # --------------------------------------------------------------  
-        # Final disposition  
+        # Final disposition (STRUCTURAL ONLY)  
         # --------------------------------------------------------------  
         status, recommendation = self._determine_outcome(  
-            artifact_integrity=aia_result,  
-            ldvp=ldvp_result,  
-            seal_trust=seal_trust_result,  
+            artifact_integrity=artifact_integrity,  
+            seal_trust=seal_trust,  
         )  
   
         return self._finalize_report(  
             audit_id=audit_id,  
-            artifact_integrity=aia_result,  
-            ldvp=ldvp_result,  
-            seal_trust=seal_trust_result,  
+            artifact_integrity=artifact_integrity,  
+            semantic_audit=semantic_audit,  
+            seal_trust=seal_trust,  
             findings=all_findings,  
             status=status,  
             recommendation=recommendation,  
         )  
   
     # ------------------------------------------------------------------  
-    # Internal helpers (NO SEMANTIC LOGIC)  
+    # Structural helpers (NO SEMANTIC LOGIC)  
     # ------------------------------------------------------------------  
-  
     @staticmethod  
-    def _ldvp_not_executed() -> LDVPResult:  
-        return LDVPResult(  
+    def _semantic_not_executed() -> SemanticAuditResult:  
+        return SemanticAuditResult(  
             executed=False,  
-            passes_executed=[],  
+            protocol_id=None,  
+            protocol_version=None,  
+            pass_results=[],  
             findings=[],  
         )  
   
@@ -180,24 +195,16 @@ class AuditorCoordinator:
   
     @staticmethod  
     def _determine_outcome(  
+        *,  
         artifact_integrity: ArtifactIntegrityResult,  
-        ldvp: LDVPResult,  
         seal_trust: SealTrustResult,  
     ) -> tuple[AuditStatus, DeliveryRecommendation]:  
         """  
         Determine final audit status and delivery recommendation.  
-  
-        This logic MUST remain simple, explicit, and reviewable.  
         """  
   
         if not artifact_integrity.passed:  
             return AuditStatus.FAIL, DeliveryRecommendation.NOT_READY  
-  
-        if any(  
-            f.severity in {Severity.CRITICAL, Severity.MAJOR}  
-            for f in ldvp.findings  
-        ):  
-            return AuditStatus.FAIL, DeliveryRecommendation.EXPERT_REVIEW_REQUIRED  
   
         if seal_trust.executed and seal_trust.trusted is False:  
             return AuditStatus.FAIL, DeliveryRecommendation.NOT_READY  
@@ -209,19 +216,21 @@ class AuditorCoordinator:
         *,  
         audit_id: str,  
         artifact_integrity: ArtifactIntegrityResult,  
-        ldvp: LDVPResult,  
+        semantic_audit: SemanticAuditResult,  
         seal_trust: SealTrustResult,  
-        findings: List[Finding],  
+        findings: List,  
         status: AuditStatus,  
         recommendation: DeliveryRecommendation,  
     ) -> VerificationReport:  
-        """Construct the final immutable VerificationReport."""  
+        """  
+        Construct the final immutable VerificationReport.  
+        """  
         return VerificationReport(  
             audit_id=audit_id,  
             status=status,  
             delivery_recommendation=recommendation,  
             artifact_integrity=artifact_integrity,  
-            ldvp=ldvp,  
+            semantic_audit=semantic_audit,  
             seal_trust=seal_trust,  
             findings=findings,  
         )  

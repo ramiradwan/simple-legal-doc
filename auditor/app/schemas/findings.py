@@ -2,13 +2,13 @@
 Standardized finding schema.  
   
 Defines the canonical structure used to report issues, observations,  
-and risk signals identified during the Legal Document Verification  
-Protocol (LDVP) and related audit subsystems.  
+and risk signals identified during deterministic and advisory audit  
+subsystems (e.g., semantic audit protocols).  
   
 This schema is:  
 - authoritative  
 - immutable once embedded  
-- protocol-pass traceable  
+- protocol- and pass-traceable  
 - severity-graded  
 - confidence-scored  
 - suitable for archival embedding (PDF/A-3 associated file)  
@@ -16,7 +16,7 @@ This schema is:
 All findings included in a VerificationReport MUST conform to this schema.  
 """  
   
-from enum import Enum, IntEnum  
+from enum import Enum  
 from typing import Optional, Dict  
   
 from pydantic import BaseModel, Field  
@@ -32,7 +32,7 @@ class Severity(str, Enum):
     """  
     Severity level of a finding.  
   
-    Maps directly to LDVP severity semantics.  
+    Severity is protocol-agnostic and comparable across subsystems.  
     Ordering is intentional and MUST remain stable.  
     """  
   
@@ -59,7 +59,7 @@ class FindingStatus(str, Enum):
     """  
     Workflow status of the finding.  
   
-    Used to signal whether the finding requires human legal review.  
+    Used to signal whether the finding requires human review.  
     """  
   
     OPEN = "open"  
@@ -69,22 +69,25 @@ class FindingStatus(str, Enum):
   
 class FindingSource(str, Enum):  
     """  
-    Origin of the finding.  
+    Originating subsystem of the finding.  
   
     This is a trust boundary and MUST remain explicit.  
     """  
   
     ARTIFACT_INTEGRITY = "artifact_integrity"  
   
-    # LDVP protocol passes  
-    LDVP_P1 = "ldvp:p1"  # Context & Classification  
-    LDVP_P2 = "ldvp:p2"  # UX & Usability  
-    LDVP_P3 = "ldvp:p3"  # Clarity & Accessibility  
-    LDVP_P4 = "ldvp:p4"  # Structural Integrity  
-    LDVP_P5 = "ldvp:p5"  # Accuracy  
-    LDVP_P6 = "ldvp:p6"  # Completeness  
-    LDVP_P7 = "ldvp:p7"  # Risk & Compliance (risk signals only)  
-    LDVP_P8 = "ldvp:p8"  # Delivery Readiness  
+    # Generic semantic bucket (legacy / fallback)  
+    SEMANTIC_AUDIT = "semantic_audit"  
+  
+    # LDVP protocol – pass-specific provenance  
+    LDVP_P1 = "ldvp_p1"  
+    LDVP_P2 = "ldvp_p2"  
+    LDVP_P3 = "ldvp_p3"  
+    LDVP_P4 = "ldvp_p4"  
+    LDVP_P5 = "ldvp_p5"  
+    LDVP_P6 = "ldvp_p6"  
+    LDVP_P7 = "ldvp_p7"  
+    LDVP_P8 = "ldvp_p8"  
   
     SEAL_TRUST = "seal_trust"  
   
@@ -120,32 +123,37 @@ class FindingObject(BaseModel):
     """  
     Canonical audit finding.  
   
-    This object corresponds to the LDVP Finding Object Schema and  
-    represents a single immutable observation or risk signal.  
-  
+    Represents a single immutable observation or risk signal.  
     Findings are descriptive, not prescriptive.  
-    They do NOT:  
-    - approve or reject a document  
-    - mandate remediation  
-    - assert legal correctness  
-  
-    They DO:  
-    - record what was observed  
-    - indicate why it matters  
-    - signal severity, confidence, and review requirements  
     """  
   
     finding_id: str = Field(  
         ...,  
         description=(  
-            "Stable identifier for the finding, typically in the form "  
-            "'P{pass}-{severity}-{sequence}'. Example: 'P7-CRIT-001'."  
+            "Stable identifier for the finding. "  
+            "Format is protocol-defined (e.g., 'LDVP-P7-CRIT-001')."  
         ),  
     )  
   
     source: FindingSource = Field(  
         ...,  
-        description="Subsystem or LDVP pass that produced the finding",  
+        description="Originating audit subsystem",  
+    )  
+  
+    # Protocol attribution (optional, but recommended)  
+    protocol_id: Optional[str] = Field(  
+        None,  
+        description="Identifier of the protocol that produced the finding (e.g., 'LDVP')",  
+    )  
+  
+    protocol_version: Optional[str] = Field(  
+        None,  
+        description="Version of the protocol that produced the finding",  
+    )  
+  
+    pass_id: Optional[str] = Field(  
+        None,  
+        description="Identifier of the specific protocol pass that produced the finding",  
     )  
   
     category: FindingCategory = Field(  
@@ -185,26 +193,17 @@ class FindingObject(BaseModel):
   
     location: Optional[str] = Field(  
         None,  
-        description=(  
-            "Optional location reference (section, clause, page, or line). "  
-            "Free-text to support diverse document formats."  
-        ),  
+        description="Optional location reference (section, clause, page, or line)",  
     )  
   
     suggested_fix: Optional[str] = Field(  
         None,  
-        description=(  
-            "Optional suggested remediation. Advisory only. "  
-            "Must not be interpreted as a mandated change."  
-        ),  
+        description="Optional advisory remediation suggestion",  
     )  
   
     metadata: Optional[Dict] = Field(  
         None,  
-        description=(  
-            "Optional structured metadata for tooling or reviewers. "  
-            "Must not contain executable content."  
-        ),  
+        description="Optional structured metadata for tooling or reviewers",  
     )  
   
     model_config = ConfigDict(  

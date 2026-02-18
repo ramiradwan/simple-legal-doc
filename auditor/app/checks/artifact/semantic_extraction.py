@@ -1,12 +1,23 @@
 """  
-Semantic payload extraction from PDF associated files.  
+Embedded payload extraction from PDF associated files.  
   
-This module extracts machine-readable semantic data embedded in the PDF  
-via the /AF (Associated Files) mechanism. Only files explicitly marked  
-with AFRelationship=/Data are considered.  
+This module extracts machine-readable data embedded in the PDF  
+via the /AF (Associated Files) mechanism.  
   
-The extracted semantic payload represents the authoritative factual  
+Only files explicitly marked with AFRelationship=/Data are considered.  
+  
+The extracted embedded payload represents the authoritative factual  
 input used during document generation.  
+  
+IMPORTANT TERMINOLOGY  
+--------------------  
+- embedded_payload:  
+    The authoritative machine-readable JSON data embedded in the PDF.  
+- embedded_text:  
+    A deterministic textual projection of the embedded payload,  
+    used only for downstream advisory analysis.  
+  
+Visible document text is NOT handled here.  
 """  
   
 from __future__ import annotations  
@@ -27,10 +38,10 @@ from auditor.app.schemas.findings import (
 )  
 from auditor.app.schemas.artifact_integrity import SemanticExtractionResult  
   
+  
 # ------------------------------------------------------------------  
 # Helpers  
 # ------------------------------------------------------------------  
-  
   
 def _resolve(obj):  
     """  
@@ -46,9 +57,9 @@ def _resolve(obj):
     return obj  
   
   
-def extract_semantic_payload(pdf_bytes: bytes) -> Optional[bytes]:  
+def extract_embedded_payload(pdf_bytes: bytes) -> Optional[bytes]:  
     """  
-    Extract exactly one embedded semantic payload via PDF/A-3 /AF  
+    Extract exactly one embedded payload via PDF/A-3 /AF  
     with AFRelationship=/Data.  
     """  
     with pikepdf.open(BytesIO(pdf_bytes)) as pdf:  
@@ -70,11 +81,11 @@ def extract_semantic_payload(pdf_bytes: bytes) -> Optional[bytes]:
                 if not isinstance(ef, pikepdf.Dictionary):  
                     continue  
   
-                embedded = _resolve(ef.get("/F"))  
-                if embedded is None:  
+                embedded_file = _resolve(ef.get("/F"))  
+                if embedded_file is None:  
                     continue  
   
-                payloads.append(embedded.read_bytes())  
+                payloads.append(embedded_file.read_bytes())  
   
         if len(payloads) != 1:  
             return None  
@@ -86,23 +97,25 @@ def extract_semantic_payload(pdf_bytes: bytes) -> Optional[bytes]:
 # Public check  
 # ------------------------------------------------------------------  
   
-  
 def run_semantic_extraction_checks(  
     pdf_bytes: bytes,  
     config=None,  
 ) -> SemanticExtractionResult:  
     """  
-    Perform semantic payload extraction and return authoritative results.  
+    Perform embedded payload extraction and return authoritative results.  
   
-    IMPORTANT:  
-    - This function is the sole authority for semantic_payload and extracted_text.  
-    - Visible text derivation MUST remain deterministic.  
-    - This function MUST NOT use OCR, heuristics, NLP, or LLMs.  
+    AUTHORITY BOUNDARY  
+    ------------------  
+    - This function is the sole authority for:  
+        * embedded_payload  
+        * embedded_text  
+    - Visible document text is extracted independently by AIA.  
+    - No comparison or interpretation is performed here.  
     """  
   
     findings: List[Finding] = []  
   
-    payload_bytes = extract_semantic_payload(pdf_bytes)  
+    payload_bytes = extract_embedded_payload(pdf_bytes)  
   
     if payload_bytes is None:  
         findings.append(  
@@ -113,22 +126,22 @@ def run_semantic_extraction_checks(
                 severity=Severity.CRITICAL,  
                 confidence=ConfidenceLevel.HIGH,  
                 status=FindingStatus.OPEN,  
-                title="Embedded semantic payload missing or invalid",  
+                title="Embedded payload missing or invalid",  
                 description=(  
                     "The PDF does not contain exactly one extractable embedded "  
-                    "semantic payload via the PDF/A-3 /AF mechanism with "  
+                    "payload via the PDF/A-3 /AF mechanism with "  
                     "AFRelationship=/Data."  
                 ),  
                 why_it_matters=(  
-                    "Without a valid embedded semantic payload, the document "  
-                    "cannot be verified against its authoritative factual input."  
+                    "Without a valid embedded payload, the document cannot be "  
+                    "verified against its authoritative factual input."  
                 ),  
             )  
         )  
         return SemanticExtractionResult(  
             findings=findings,  
-            extracted_text=None,  
-            semantic_payload=None,  
+            embedded_text=None,  
+            embedded_payload=None,  
         )  
   
     if len(payload_bytes) == 0:  
@@ -140,25 +153,25 @@ def run_semantic_extraction_checks(
                 severity=Severity.CRITICAL,  
                 confidence=ConfidenceLevel.HIGH,  
                 status=FindingStatus.OPEN,  
-                title="Embedded semantic payload is empty",  
-                description="The embedded semantic payload contains no data.",  
+                title="Embedded payload is empty",  
+                description="The embedded payload contains no data.",  
                 why_it_matters=(  
-                    "An empty semantic payload cannot represent authoritative "  
-                    "document semantics."  
+                    "An empty embedded payload cannot represent authoritative "  
+                    "document data."  
                 ),  
             )  
         )  
         return SemanticExtractionResult(  
             findings=findings,  
-            extracted_text=None,  
-            semantic_payload=None,  
+            embedded_text=None,  
+            embedded_payload=None,  
         )  
   
     # --------------------------------------------------------------  
-    # Parse semantic payload (JSON)  
+    # Parse embedded payload (JSON)  
     # --------------------------------------------------------------  
     try:  
-        semantic_payload = json.loads(payload_bytes)  
+        embedded_payload = json.loads(payload_bytes)  
     except Exception:  
         findings.append(  
             Finding(  
@@ -168,41 +181,47 @@ def run_semantic_extraction_checks(
                 severity=Severity.CRITICAL,  
                 confidence=ConfidenceLevel.HIGH,  
                 status=FindingStatus.OPEN,  
-                title="Embedded semantic payload is not valid JSON",  
+                title="Embedded payload is not valid JSON",  
                 description=(  
-                    "The embedded semantic payload could not be parsed as JSON "  
-                    "and therefore cannot be used as an authoritative semantic source."  
+                    "The embedded payload could not be parsed as JSON and "  
+                    "therefore cannot be used as an authoritative data source."  
                 ),  
                 why_it_matters=(  
                     "Invalid JSON prevents deterministic interpretation and "  
-                    "verification of document semantics."  
+                    "verification of document data."  
                 ),  
             )  
         )  
         return SemanticExtractionResult(  
             findings=findings,  
-            extracted_text=None,  
-            semantic_payload=None,  
+            embedded_text=None,  
+            embedded_payload=None,  
         )  
   
     # --------------------------------------------------------------  
-    # Deterministic visible text derivation  
+    # Deterministic embedded text derivation  
     # --------------------------------------------------------------  
-    extracted_text_parts: List[str] = []  
+    embedded_text_parts: List[str] = []  
   
-    if isinstance(semantic_payload, dict):  
-        for value in semantic_payload.values():  
+    if isinstance(embedded_payload, dict):  
+        for value in embedded_payload.values():  
             if isinstance(value, (str, int, float)):  
-                extracted_text_parts.append(str(value))  
+                embedded_text_parts.append(str(value))  
   
-    extracted_text = "\n".join(extracted_text_parts).strip()  
+    embedded_text = "\n".join(embedded_text_parts).strip()  
   
-    # Absolute invariant: extracted_text MUST NOT be empty on success  
-    if not extracted_text:  
-        extracted_text = json.dumps(semantic_payload, ensure_ascii=False)  
+    # Absolute invariant:  
+    # Embedded text MUST be non-empty on success.  
+    # Fallback is a stable JSON serialization.  
+    if not embedded_text:  
+        embedded_text = json.dumps(  
+            embedded_payload,  
+            ensure_ascii=False,  
+            sort_keys=True,  
+        )  
   
     return SemanticExtractionResult(  
         findings=findings,  
-        extracted_text=extracted_text,  
-        semantic_payload=semantic_payload,  
+        embedded_text=embedded_text,  
+        embedded_payload=embedded_payload,  
     )  

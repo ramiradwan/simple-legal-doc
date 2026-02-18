@@ -7,16 +7,12 @@ enabled and how agentic or external services (e.g. Azure OpenAI) are accessed.
   
 Configuration is read-only at runtime and must not influence verification  
 outcomes in non-deterministic ways.  
-  
-Responsibilities:  
-- Environment variable parsing  
-- Feature gating (e.g. enable/disable semantic audit)  
-- External service configuration (future-facing)  
 """  
+  
 from __future__ import annotations  
   
 import os  
-from pydantic import BaseModel, Field, validator  
+from pydantic import BaseModel, Field, field_validator, ValidationInfo  
   
   
 class AuditorConfig(BaseModel):  
@@ -33,17 +29,25 @@ class AuditorConfig(BaseModel):
   
     ENABLE_ARTIFACT_INTEGRITY_AUDIT: bool = Field(  
         True,  
-        description="Enable deterministic artifact integrity verification"  
+        description="Enable deterministic artifact integrity verification",  
     )  
   
     ENABLE_LDVP: bool = Field(  
         False,  
-        description="Enable semantic Legal Document Verification Protocol"  
+        description="Enable full Legal Document Verification Protocol (P1–P8)",  
+    )  
+  
+    ENABLE_LDVP_SANDBOX: bool = Field(  
+        False,  
+        description=(  
+            "Enable LDVP sandbox mode (Pass 1 only). "  
+            "Non-production, infrastructure verification only."  
+        ),  
     )  
   
     ENABLE_SEAL_TRUST_VERIFICATION: bool = Field(  
         False,  
-        description="Enable cryptographic seal trust verification"  
+        description="Enable cryptographic seal trust verification",  
     )  
   
     # ------------------------------------------------------------------  
@@ -52,17 +56,17 @@ class AuditorConfig(BaseModel):
   
     MAX_PDF_SIZE_MB: int = Field(  
         25,  
-        description="Maximum allowed PDF size in megabytes"  
+        description="Maximum allowed PDF size in megabytes",  
     )  
   
     MAX_PAGE_COUNT: int = Field(  
         500,  
-        description="Maximum allowed number of pages in the PDF"  
+        description="Maximum allowed number of pages in the PDF",  
     )  
   
     MAX_TEXT_EXTRACTION_CHARS: int = Field(  
         2_000_000,  
-        description="Upper bound on extracted text size for semantic analysis"  
+        description="Upper bound on extracted text size for semantic analysis",  
     )  
   
     # ------------------------------------------------------------------  
@@ -71,17 +75,17 @@ class AuditorConfig(BaseModel):
   
     LDVP_MODEL_PROVIDER: str = Field(  
         "disabled",  
-        description="Semantic analysis provider identifier"  
+        description="Semantic analysis provider identifier",  
     )  
   
     LDVP_MODEL_NAME: str = Field(  
         "",  
-        description="Model name used for semantic analysis"  
+        description="Model name used for semantic analysis",  
     )  
   
     LDVP_MAX_FINDINGS: int = Field(  
         100,  
-        description="Maximum number of semantic findings to emit"  
+        description="Maximum number of semantic findings to emit",  
     )  
   
     # ------------------------------------------------------------------  
@@ -90,29 +94,26 @@ class AuditorConfig(BaseModel):
   
     AZURE_OPENAI_ENDPOINT: str = Field(  
         "",  
-        description="Azure OpenAI endpoint URL"  
+        description="Azure OpenAI endpoint URL",  
     )  
   
     AZURE_OPENAI_DEPLOYMENT: str = Field(  
         "",  
-        description="Azure OpenAI deployment name"  
+        description="Azure OpenAI deployment name",  
     )  
   
     AZURE_OPENAI_API_VERSION: str = Field(  
         "",  
-        description="Azure OpenAI API version"  
+        description="Azure OpenAI API version",  
     )  
   
     # ------------------------------------------------------------------  
-    # Validators  
+    # Validators (Pydantic v2)  
     # ------------------------------------------------------------------  
   
-    @validator("LDVP_MODEL_PROVIDER")  
+    @field_validator("LDVP_MODEL_PROVIDER")  
+    @classmethod  
     def validate_ldvp_provider(cls, v: str) -> str:  
-        """  
-        Prevent accidental activation of semantic analysis without  
-        explicitly enabling LDVP.  
-        """  
         allowed = {"disabled", "azure_openai"}  
         if v not in allowed:  
             raise ValueError(  
@@ -121,11 +122,29 @@ class AuditorConfig(BaseModel):
             )  
         return v  
   
-    @validator("LDVP_MODEL_NAME")  
-    def model_name_requires_ldvp(cls, v: str, values) -> str:  
-        if v and not values.get("ENABLE_LDVP"):  
+    @field_validator("ENABLE_LDVP_SANDBOX")  
+    @classmethod  
+    def sandbox_mutual_exclusion(  
+        cls, v: bool, info: ValidationInfo  
+    ) -> bool:  
+        if v and info.data.get("ENABLE_LDVP"):  
             raise ValueError(  
-                "LDVP_MODEL_NAME is set but ENABLE_LDVP is false"  
+                "ENABLE_LDVP_SANDBOX and ENABLE_LDVP cannot both be true."  
+            )  
+        return v  
+  
+    @field_validator("LDVP_MODEL_NAME")  
+    @classmethod  
+    def model_name_requires_semantic_audit(  
+        cls, v: str, info: ValidationInfo  
+    ) -> str:  
+        if v and not (  
+            info.data.get("ENABLE_LDVP")  
+            or info.data.get("ENABLE_LDVP_SANDBOX")  
+        ):  
+            raise ValueError(  
+                "LDVP_MODEL_NAME is set but neither ENABLE_LDVP nor "  
+                "ENABLE_LDVP_SANDBOX is enabled."  
             )  
         return v  
   
@@ -153,6 +172,9 @@ class AuditorConfig(BaseModel):
             ),  
             ENABLE_LDVP=env_bool(  
                 "AUDITOR_ENABLE_LDVP", False  
+            ),  
+            ENABLE_LDVP_SANDBOX=env_bool(  
+                "AUDITOR_ENABLE_LDVP_SANDBOX", False  
             ),  
             ENABLE_SEAL_TRUST_VERIFICATION=env_bool(  
                 "AUDITOR_ENABLE_SEAL_TRUST_VERIFICATION", False  
@@ -186,5 +208,6 @@ class AuditorConfig(BaseModel):
             ),  
         )  
   
-    class Config:  
-        frozen = True  
+    model_config = {  
+        "frozen": True,  
+    }  

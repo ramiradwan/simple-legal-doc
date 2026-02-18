@@ -4,3 +4,7 @@ pydantic
 pikepdf  
 anyio  
 python-multipart  
+azure-identity  
+azure-core  
+openai
+pypdf

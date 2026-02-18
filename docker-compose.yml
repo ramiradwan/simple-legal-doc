@@ -8,23 +8,24 @@ services:
     image: simple-legal-doc-backend  
     ports:  
       - "8000:8000"  
+    env_file:  
+      - .env.trusted  
     environment:  
       - TEMPLATE_DIR=/app/app/templates  
   
       # --------------------------------------------------  
-      # Signing backend selection (explicit)  
+      # Signing configuration  
+      # (SIGNING_BACKEND is provided via .env.trusted)  
       # --------------------------------------------------  
-      - SIGNING_BACKEND=${SIGNING_BACKEND:-}  
       - SIGNING_HTTP_URL=http://signer:8080/sign-archival  
   
-      # Local dev signing  
+      # Local dev signing (SIGNING_BACKEND=local)  
       - SIGNING_P12_PATH=/run/dev-cert/dev-signing.p12  
       - SIGNING_P12_PASSWORD=dev-only  
   
     volumes:  
       # DEV ONLY: hot reload templates  
       - ./backend/app/templates:/app/app/templates  
-  
     restart: unless-stopped  
   
   frontend:  
@@ -55,12 +56,14 @@ services:
       - AZURE_TENANT_ID=${AZURE_TENANT_ID}  
       - AZURE_CLIENT_SECRET=${AZURE_CLIENT_SECRET}  
     restart: unless-stopped  
-
+  
   auditor:  
     build:  
       context: .  
       dockerfile: auditor/Dockerfile  
     image: simple-legal-doc-auditor  
+    env_file:  
+      - .env.trusted  
     volumes:  
       - ./auditor:/app/auditor  
     working_dir: /app  

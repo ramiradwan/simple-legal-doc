@@ -5,9 +5,9 @@ Defines the master audit report produced by the Auditor.
   
 The report captures:  
 - deterministic artifact integrity results (AIA),  
-- advisory semantic and legal findings (LDVP),  
+- advisory semantic audit findings (protocol-driven, e.g., LDVP),  
 - cryptographic seal trust verification,  
-- and an LDVP-derived delivery-readiness recommendation.  
+- and a workflow-level delivery readiness recommendation.  
   
 It is designed to be embedded into the PDF as a permanent  
 meta-audit artifact (PDF/A-3 associated file).  
@@ -26,17 +26,12 @@ from pydantic import ConfigDict
 # Canonical Finding Import (AUTHORITATIVE)  
 # ---------------------------------------------------------------------------  
   
-# NOTE:  
-# The FindingObject schema defined in schemas/findings.py is the SOLE  
-# authoritative representation of an audit finding.  
-# This module MUST NOT redefine or specialize findings.  
 from auditor.app.schemas.findings import FindingObject as Finding  
   
   
 # ---------------------------------------------------------------------------  
 # Enumerations (FROZEN CONTRACTS)  
 # ---------------------------------------------------------------------------  
-  
   
 class AuditStatus(str, Enum):  
     """  
@@ -53,8 +48,7 @@ class AuditStatus(str, Enum):
   
 class DeliveryRecommendation(str, Enum):  
     """  
-    Advisory delivery-readiness recommendation derived from LDVP,  
-    primarily Pass 8.  
+    Advisory delivery-readiness recommendation.  
   
     This is a guidance signal only and MUST NOT be interpreted  
     as legal approval, sign-off, or release authorization.  
@@ -69,7 +63,6 @@ class DeliveryRecommendation(str, Enum):
 # ---------------------------------------------------------------------------  
 # Intermediate Results (INTERNAL CONTRACTS)  
 # ---------------------------------------------------------------------------  
-  
   
 class ArtifactIntegrityResult(BaseModel):  
     """  
@@ -86,7 +79,7 @@ class ArtifactIntegrityResult(BaseModel):
     )  
   
     checks_executed: List[str] = Field(  
-        ...,  
+        default_factory=list,  
         description="Identifiers of integrity checks that were executed",  
     )  
   
@@ -95,60 +88,75 @@ class ArtifactIntegrityResult(BaseModel):
         description="Deterministic artifact integrity findings",  
     )  
   
-    # Authoritative semantic outputs (ONLY present if passed == True)  
-    extracted_text: Optional[str] = Field(  
+    # ------------------------------------------------------------------  
+    # Authoritative extracted signals (ONLY present if passed == True)  
+    # ------------------------------------------------------------------  
+  
+    embedded_payload: Optional[Dict] = Field(  
         None,  
-        description="Authoritative extracted visible text",  
-    )  
-  
-    semantic_payload: Optional[Dict] = Field(  
-        None,  
-        description="Canonical embedded semantic payload",  
-    )  
-  
-    @model_validator(mode="after")  
-    def enforce_semantic_gate(self):  
-        if self.passed:  
-            if self.extracted_text is None or self.semantic_payload is None:  
-                raise ValueError(  
-                    "Semantic outputs must be present when artifact integrity passes"  
-                )  
-        else:  
-            if self.extracted_text is not None or self.semantic_payload is not None:  
-                raise ValueError(  
-                    "Semantic outputs must NOT be present if integrity fails"  
-                )  
-        return self  
-  
-    model_config = ConfigDict(frozen=True)  
-  
-  
-class LDVPResult(BaseModel):  
-    """  
-    Result of the Legal Document Verification Protocol (LDVP).  
-  
-    All findings in this section are advisory and may include  
-    probabilistic or heuristic assessments.  
-  
-    LDVP MUST NOT be evaluated unless artifact integrity has passed.  
-    """  
-  
-    executed: bool = Field(  
-        ...,  
-        description="Whether LDVP was executed",  
-    )  
-  
-    passes_executed: List[str] = Field(  
-        default_factory=list,  
-        description="Identifiers of LDVP passes that were executed (P1–P8)",  
-    )  
-  
-    findings: List[Finding] = Field(  
-        default_factory=list,  
         description=(  
-            "LDVP findings (including risk signals and delivery readiness issues)"  
+            "Authoritative machine-readable payload embedded in the PDF "  
+            "via PDF/A-3 associated files."  
         ),  
     )  
+  
+    embedded_text: Optional[str] = Field(  
+        None,  
+        description=(  
+            "Deterministic textual projection of the embedded payload. "  
+            "Derived solely from embedded data; not from visible content."  
+        ),  
+    )  
+  
+    visible_text: Optional[str] = Field(  
+        None,  
+        description=(  
+            "Extracted human-visible document text derived from PDF page "  
+            "content streams."  
+        ),  
+    )  
+  
+    # ------------------------------------------------------------------  
+    # Invariants  
+    # ------------------------------------------------------------------  
+  
+    @model_validator(mode="after")  
+    def enforce_aia_invariants(self):  
+        """  
+        Enforce Artifact Integrity invariants:  
+  
+        - If integrity PASSED:  
+            * embedded_payload MUST be present  
+            * embedded_text MUST be present  
+            * visible_text MUST be present  
+        - If integrity FAILED:  
+            * none of the above may be present  
+        """  
+        if self.passed:  
+            if (  
+                self.embedded_payload is None  
+                or self.embedded_text is None  
+                or self.visible_text is None  
+            ):  
+                raise ValueError(  
+                    "All extracted artifact signals must be present when "  
+                    "artifact integrity passes"  
+                )  
+        else:  
+            if any(  
+                v is not None  
+                for v in (  
+                    self.embedded_payload,  
+                    self.embedded_text,  
+                    self.visible_text,  
+                )  
+            ):  
+                raise ValueError(  
+                    "Extracted artifact signals must NOT be present "  
+                    "if artifact integrity fails"  
+                )  
+  
+        return self  
   
     model_config = ConfigDict(frozen=True)  
   
@@ -183,6 +191,8 @@ class SealTrustResult(BaseModel):
 # Top-Level Report (PUBLIC, FROZEN CONTRACT)  
 # ---------------------------------------------------------------------------  
   
+from auditor.app.semantic_audit.result import SemanticAuditResult  
+  
   
 class VerificationReport(BaseModel):  
     """  
@@ -198,7 +208,7 @@ class VerificationReport(BaseModel):
     """  
   
     schema_version: str = Field(  
-        "1.1",  
+        "1.3",  
         description="VerificationReport schema version",  
     )  
   
@@ -224,10 +234,7 @@ class VerificationReport(BaseModel):
   
     delivery_recommendation: DeliveryRecommendation = Field(  
         ...,  
-        description=(  
-            "Advisory delivery-readiness recommendation derived from LDVP "  
-            "Pass 8 and unresolved prior findings."  
-        ),  
+        description="Advisory delivery-readiness recommendation",  
     )  
   
     artifact_integrity: ArtifactIntegrityResult = Field(  
@@ -235,9 +242,12 @@ class VerificationReport(BaseModel):
         description="Deterministic artifact integrity verification results",  
     )  
   
-    ldvp: LDVPResult = Field(  
+    semantic_audit: SemanticAuditResult = Field(  
         ...,  
-        description="Legal Document Verification Protocol (LDVP) results",  
+        description=(  
+            "Advisory semantic audit results produced by a protocol "  
+            "(e.g., LDVP). These findings are non-authoritative."  
+        ),  
     )  
   
     seal_trust: SealTrustResult = Field(  
@@ -253,16 +263,22 @@ class VerificationReport(BaseModel):
         ),  
     )  
   
+    # ------------------------------------------------------------------  
+    # Cross-layer invariants  
+    # ------------------------------------------------------------------  
+  
     @model_validator(mode="after")  
     def enforce_audit_flow(self):  
         """  
         Enforce protocol sequencing and consistency rules:  
-        - LDVP must not execute if artifact integrity failed  
+  
+        - Semantic audit must not execute if artifact integrity failed  
         - PASS status is only allowed if artifact integrity passed  
         """  
-        if not self.artifact_integrity.passed and self.ldvp.executed:  
+        if not self.artifact_integrity.passed and self.semantic_audit.executed:  
             raise ValueError(  
-                "LDVP results must not be present if artifact integrity failed"  
+                "Semantic audit results must not be present if "  
+                "artifact integrity failed"  
             )  
   
         if self.status == AuditStatus.PASS and not self.artifact_integrity.passed:  
@@ -271,6 +287,19 @@ class VerificationReport(BaseModel):
             )  
   
         return self  
+  
+    # ------------------------------------------------------------------  
+    # Protocol alias (ADDITIVE, READ-ONLY)  
+    # ------------------------------------------------------------------  
+  
+    @property  
+    def ldvp(self) -> SemanticAuditResult:  
+        """  
+        Protocol-specific alias for the LDVP semantic audit result.  
+  
+        Read-only structural convenience for callers and tests.  
+        """  
+        return self.semantic_audit  
   
     model_config = ConfigDict(  
         frozen=True,  

@@ -1,9 +1,11 @@
 """  
-Cryptographic binding verification between semantic data and document metadata.  
+Cryptographic binding verification between embedded semantic data and  
+document metadata.  
   
-This module verifies that the embedded semantic payload is cryptographically  
-bound to the document via XMP metadata. It prevents divergence between what  
-the document declares and what its machine-readable data represents.  
+This module verifies that the embedded machine-readable payload is  
+cryptographically bound to the document via XMP metadata. It prevents  
+divergence between what the document declares and what its embedded  
+data represents.  
   
 Verification is deterministic and non-probabilistic.  
 """  
@@ -27,7 +29,7 @@ from auditor.app.schemas.findings import (
 )  
   
 from auditor.app.checks.artifact.semantic_extraction import (  
-    extract_semantic_payload,  
+    extract_embedded_payload,  
 )  
   
 # ------------------------------------------------------------------  
@@ -107,14 +109,14 @@ def run_cryptographic_binding_checks(pdf_bytes: bytes) -> List[Finding]:
     Verify cryptographic binding between the embedded semantic payload and  
     the claimed semantic hash declared in document metadata.  
     """  
-  
     findings: List[Finding] = []  
   
     # --------------------------------------------------------------  
-    # Extract embedded semantic payload  
+    # Extract embedded payload (authoritative source)  
     # --------------------------------------------------------------  
-    payload = extract_semantic_payload(pdf_bytes)  
-    if payload is None:  
+    payload_bytes = extract_embedded_payload(pdf_bytes)  
+  
+    if payload_bytes is None:  
         findings.append(  
             Finding(  
                 finding_id="AIA-CRIT-010",  
@@ -123,24 +125,26 @@ def run_cryptographic_binding_checks(pdf_bytes: bytes) -> List[Finding]:
                 severity=Severity.CRITICAL,  
                 confidence=ConfidenceLevel.HIGH,  
                 status=FindingStatus.OPEN,  
-                title="Semantic payload unavailable for binding",  
+                title="Embedded payload unavailable for binding",  
                 description=(  
-                    "The embedded semantic payload could not be extracted. "  
-                    "Cryptographic binding verification cannot be performed."  
+                    "The embedded machine-readable payload could not be "  
+                    "extracted. Cryptographic binding verification cannot "  
+                    "be performed."  
                 ),  
                 why_it_matters=(  
-                    "Without access to the embedded semantic payload, it is "  
-                    "impossible to verify that the document is cryptographically "  
-                    "bound to its declared machine-readable data."  
+                    "Without access to the embedded payload, it is impossible "  
+                    "to verify that the document is cryptographically bound "  
+                    "to its declared machine-readable data."  
                 ),  
             )  
         )  
         return findings  
   
     # --------------------------------------------------------------  
-    # Canonicalize semantic payload  
+    # Canonicalize embedded payload  
     # --------------------------------------------------------------  
-    canonical_payload = _canonicalize_json(payload)  
+    canonical_payload = _canonicalize_json(payload_bytes)  
+  
     if canonical_payload is None:  
         findings.append(  
             Finding(  
@@ -150,10 +154,11 @@ def run_cryptographic_binding_checks(pdf_bytes: bytes) -> List[Finding]:
                 severity=Severity.CRITICAL,  
                 confidence=ConfidenceLevel.HIGH,  
                 status=FindingStatus.OPEN,  
-                title="Semantic payload canonicalization failed",  
+                title="Embedded payload canonicalization failed",  
                 description=(  
-                    "The embedded semantic payload could not be deterministically "  
-                    "canonicalized. Cryptographic verification cannot be performed."  
+                    "The embedded payload could not be deterministically "  
+                    "canonicalized. Cryptographic verification cannot be "  
+                    "performed."  
                 ),  
                 why_it_matters=(  
                     "Deterministic canonicalization is required to compute a "  
@@ -173,6 +178,7 @@ def run_cryptographic_binding_checks(pdf_bytes: bytes) -> List[Finding]:
     # Extract claimed semantic hash from metadata  
     # --------------------------------------------------------------  
     claimed_hash = _extract_claimed_hash_from_xmp(pdf_bytes)  
+  
     if claimed_hash is None:  
         findings.append(  
             Finding(  
@@ -189,7 +195,7 @@ def run_cryptographic_binding_checks(pdf_bytes: bytes) -> List[Finding]:
                 ),  
                 why_it_matters=(  
                     "Without a declared semantic hash, cryptographic binding "  
-                    "between the document and its semantic payload cannot be "  
+                    "between the document and its embedded payload cannot be "  
                     "verified."  
                 ),  
             )  

@@ -31,20 +31,31 @@ def test_happy_path_semantic_document_passes_full_audit():
         audit_id="test-happy-path-semantic",  
     )  
   
+    # ------------------------------------------------------------------  
     # Overall outcome  
+    # ------------------------------------------------------------------  
     assert report.status == AuditStatus.PASS  
     assert report.delivery_recommendation == DeliveryRecommendation.READY  
   
-    # Artifact Integrity PASSED  
+    # ------------------------------------------------------------------  
+    # Artifact Integrity PASSED (authoritative trust root)  
+    # ------------------------------------------------------------------  
     assert report.artifact_integrity.passed is True  
-    assert report.artifact_integrity.extracted_text  
-    assert report.artifact_integrity.semantic_payload is not None  
   
-    # LDVP executed  
-    assert report.ldvp.executed is True  
-    assert report.ldvp.passes_executed  
+    # Canonical semantic snapshot must be present  
+    assert report.artifact_integrity.embedded_text  
+    assert report.artifact_integrity.embedded_payload is not None  
+    assert report.artifact_integrity.visible_text is not None  
   
+    # ------------------------------------------------------------------  
+    # Semantic audit is advisory and may not be executed by default  
+    # ------------------------------------------------------------------  
+    assert report.ldvp.executed is False  
+    assert report.ldvp.pass_results == []  
+  
+    # ------------------------------------------------------------------  
     # No structural integrity failures  
+    # ------------------------------------------------------------------  
     assert not any(  
         f.source == FindingSource.ARTIFACT_INTEGRITY  
         and f.severity in {Severity.CRITICAL, Severity.MAJOR}  

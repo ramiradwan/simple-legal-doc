@@ -29,6 +29,14 @@ from auditor.app.checks.artifact.cryptographic_binding import (
     run_cryptographic_binding_checks,  
 )  
   
+# NOTE:  
+# Visible document text extraction is intentionally isolated from  
+# semantic / embedded payload extraction.  
+from auditor.app.checks.artifact.document_text_extraction import (  
+    extract_visible_text,  
+)  
+  
+  
 # Deterministic artifact check contract  
 ArtifactCheck = Callable[  
     [bytes, AuditorConfig],  
@@ -54,7 +62,7 @@ class ArtifactIntegrityAudit:
   
         self._checks: List[ArtifactCheck] = [  
             self._container_and_archival_compliance,  
-            self._semantic_payload_presence_and_extraction,  
+            self._embedded_payload_presence_and_extraction,  
             self._cryptographic_binding_verification,  
         ]  
   
@@ -66,9 +74,12 @@ class ArtifactIntegrityAudit:
         findings: List[Finding] = []  
         checks_executed: List[str] = []  
   
-        extracted_text: Optional[str] = None  
-        semantic_payload: Optional[dict] = None  
+        embedded_text: Optional[str] = None  
+        embedded_payload: Optional[dict] = None  
   
+        # --------------------------------------------------------------  
+        # Run deterministic integrity checks  
+        # --------------------------------------------------------------  
         for check in self._checks:  
             checks_executed.append(check.__name__)  
   
@@ -76,8 +87,8 @@ class ArtifactIntegrityAudit:
   
             if isinstance(result, SemanticExtractionResult):  
                 findings.extend(result.findings)  
-                extracted_text = result.extracted_text  
-                semantic_payload = result.semantic_payload  
+                embedded_text = result.embedded_text  
+                embedded_payload = result.embedded_payload  
                 check_findings = result.findings  
             else:  
                 findings.extend(result)  
@@ -90,17 +101,46 @@ class ArtifactIntegrityAudit:
                     findings=findings,  
                 )  
   
-        if extracted_text is None or semantic_payload is None:  
+        # --------------------------------------------------------------  
+        # Post-check invariants  
+        # --------------------------------------------------------------  
+        if embedded_text is None or embedded_payload is None:  
             raise RuntimeError(  
-                "Invariant violation: AIA passed but semantic extraction is missing"  
+                "Invariant violation: AIA passed but embedded payload "  
+                "extraction is missing"  
             )  
   
+        # --------------------------------------------------------------  
+        # Visible document text extraction (deterministic, non-gating)  
+        # --------------------------------------------------------------  
+        visible_text = extract_visible_text(pdf_bytes)  
+        
+        # NOTE:  
+        # Visible text extraction MUST NOT gate execution.  
+        # An empty string is a valid, authoritative snapshot.  
+        
+        # --------------------------------------------------------------  
+        # Final authoritative AIA result  
+        # --------------------------------------------------------------  
         return ArtifactIntegrityResult(  
             passed=True,  
             checks_executed=checks_executed,  
             findings=findings,  
-            extracted_text=extracted_text,  
-            semantic_payload=semantic_payload,  
+            embedded_payload=embedded_payload,  
+            embedded_text=embedded_text,  
+            visible_text=visible_text,  
+        )  
+  
+        # --------------------------------------------------------------  
+        # Final authoritative AIA result  
+        # --------------------------------------------------------------  
+        return ArtifactIntegrityResult(  
+            passed=True,  
+            checks_executed=checks_executed,  
+            findings=findings,  
+            embedded_payload=embedded_payload,  
+            embedded_text=embedded_text,  
+            visible_text=visible_text,  
         )  
   
     # ------------------------------------------------------------------  
@@ -112,7 +152,7 @@ class ArtifactIntegrityAudit:
     ) -> List[Finding]:  
         return run_container_archival_checks(pdf_bytes)  
   
-    def _semantic_payload_presence_and_extraction(  
+    def _embedded_payload_presence_and_extraction(  
         self, pdf_bytes: bytes, _: AuditorConfig  
     ) -> SemanticExtractionResult:  
         return run_semantic_extraction_checks(pdf_bytes)  
