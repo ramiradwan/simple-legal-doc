@@ -34,6 +34,14 @@ from auditor.app.coordinator.artifact_integrity_audit import (
     ArtifactIntegrityAudit,  
 )  
   
+# Events (observational only)  
+from auditor.app.events import (  
+    AuditEvent,  
+    AuditEventType,  
+    AuditEventEmitter,  
+    NullEventEmitter,  
+)  
+  
   
 class AuditorCoordinator:  
     """  
@@ -58,7 +66,6 @@ class AuditorCoordinator:
         Intended for tests and explicit wiring.  
         No semantic audit pipelines are constructed implicitly.  
         """  
-  
         self._config = config  
   
         self._artifact_integrity_audit = (  
@@ -82,7 +89,6 @@ class AuditorCoordinator:
         Semantic audit pipelines are NOT constructed here.  
         They must be injected by an integration layer if enabled.  
         """  
-  
         artifact_integrity_audit = ArtifactIntegrityAudit(config=config)  
   
         semantic_audit_pipeline = None  
@@ -106,71 +112,187 @@ class AuditorCoordinator:
     # ------------------------------------------------------------------  
     # Public API  
     # ------------------------------------------------------------------  
-    def run_audit(self, *, pdf_bytes: bytes, audit_id: str) -> VerificationReport:  
+    async def run_audit(  
+        self,  
+        *,  
+        pdf_bytes: bytes,  
+        audit_id: str,  
+        emitter: Optional[AuditEventEmitter] = None,  
+    ) -> VerificationReport:  
         """  
         Execute the full audit pipeline for a finalized PDF artifact.  
+  
+        The emitter is strictly observational:  
+        - failures must not affect execution  
+        - events must not influence control flow  
         """  
+        emitter = emitter or NullEventEmitter()  
   
-        all_findings = []  
+        await emitter.emit(  
+            AuditEvent(  
+                audit_id=audit_id,  
+                event_type=AuditEventType.AUDIT_STARTED,  
+            )  
+        )  
   
-        # --------------------------------------------------------------  
-        # 1. Artifact Integrity Audit (HARD GATE)  
-        # --------------------------------------------------------------  
-        artifact_integrity = self._artifact_integrity_audit.run(pdf_bytes)  
-        all_findings.extend(artifact_integrity.findings)  
+        try:  
+            all_findings: List = []  
   
-        if not artifact_integrity.passed:  
-            return self._finalize_report(  
+            # ----------------------------------------------------------  
+            # 1. Artifact Integrity Audit (HARD GATE)  
+            # ----------------------------------------------------------  
+            await emitter.emit(  
+                AuditEvent(  
+                    audit_id=audit_id,  
+                    event_type=AuditEventType.AIA_STARTED,  
+                )  
+            )  
+  
+            artifact_integrity = self._artifact_integrity_audit.run(pdf_bytes)  
+            all_findings.extend(artifact_integrity.findings)  
+  
+            await emitter.emit(  
+                AuditEvent(  
+                    audit_id=audit_id,  
+                    event_type=AuditEventType.AIA_COMPLETED,  
+                    details={  
+                        "passed": artifact_integrity.passed,  
+                        "findings_count": len(artifact_integrity.findings),  
+                    },  
+                )  
+            )  
+  
+            if not artifact_integrity.passed:  
+                report = self._finalize_report(  
+                    audit_id=audit_id,  
+                    artifact_integrity=artifact_integrity,  
+                    semantic_audit=self._semantic_not_executed(),  
+                    seal_trust=self._seal_trust_not_executed(),  
+                    findings=all_findings,  
+                    status=AuditStatus.FAIL,  
+                    recommendation=DeliveryRecommendation.NOT_READY,  
+                )  
+  
+                await emitter.emit(  
+                    AuditEvent(  
+                        audit_id=audit_id,  
+                        event_type=AuditEventType.AUDIT_COMPLETED,  
+                        details={  
+                            "status": AuditStatus.FAIL.value,  
+                            "recommendation": DeliveryRecommendation.NOT_READY.value,  
+                            "report": report.model_dump(),  
+                        },  
+                    )  
+                )  
+  
+                return report  
+  
+            # ----------------------------------------------------------  
+            # 2. Semantic Audit (ADVISORY)  
+            # ----------------------------------------------------------  
+            if self._semantic_audit_pipeline is None:  
+                semantic_audit = self._semantic_not_executed()  
+            else:  
+                await emitter.emit(  
+                    AuditEvent(  
+                        audit_id=audit_id,  
+                        event_type=AuditEventType.SEMANTIC_AUDIT_STARTED,  
+                    )  
+                )  
+  
+                semantic_audit = await self._semantic_audit_pipeline.run(  
+                    embedded_text=artifact_integrity.embedded_text,  
+                    embedded_payload=artifact_integrity.embedded_payload,  
+                    visible_text=artifact_integrity.visible_text,  
+                    audit_id=audit_id,  
+                    emitter=emitter,  
+                )  
+  
+                await emitter.emit(  
+                    AuditEvent(  
+                        audit_id=audit_id,  
+                        event_type=AuditEventType.SEMANTIC_AUDIT_COMPLETED,  
+                        details={  
+                            "findings_count": len(semantic_audit.findings),  
+                        },  
+                    )  
+                )  
+  
+            all_findings.extend(semantic_audit.findings)  
+  
+            # ----------------------------------------------------------  
+            # 3. Seal Trust Verification (OPTIONAL HARD GATE)  
+            # ----------------------------------------------------------  
+            if self._seal_trust_verifier is None:  
+                seal_trust = self._seal_trust_not_executed()  
+            else:  
+                await emitter.emit(  
+                    AuditEvent(  
+                        audit_id=audit_id,  
+                        event_type=AuditEventType.SEAL_TRUST_STARTED,  
+                    )  
+                )  
+  
+                seal_trust = self._seal_trust_verifier.run(pdf_bytes)  
+  
+                await emitter.emit(  
+                    AuditEvent(  
+                        audit_id=audit_id,  
+                        event_type=AuditEventType.SEAL_TRUST_COMPLETED,  
+                        details={  
+                            "trusted": seal_trust.trusted,  
+                            "findings_count": len(seal_trust.findings),  
+                        },  
+                    )  
+                )  
+  
+            all_findings.extend(seal_trust.findings)  
+  
+            # ----------------------------------------------------------  
+            # Final disposition (STRUCTURAL ONLY)  
+            # ----------------------------------------------------------  
+            status, recommendation = self._determine_outcome(  
+                artifact_integrity=artifact_integrity,  
+                semantic_audit=semantic_audit,  
+                seal_trust=seal_trust,  
+            )  
+  
+            report = self._finalize_report(  
                 audit_id=audit_id,  
                 artifact_integrity=artifact_integrity,  
-                semantic_audit=self._semantic_not_executed(),  
-                seal_trust=self._seal_trust_not_executed(),  
+                semantic_audit=semantic_audit,  
+                seal_trust=seal_trust,  
                 findings=all_findings,  
-                status=AuditStatus.FAIL,  
-                recommendation=DeliveryRecommendation.NOT_READY,  
+                status=status,  
+                recommendation=recommendation,  
             )  
   
-        # --------------------------------------------------------------  
-        # 2. Semantic Audit (ADVISORY)  
-        # --------------------------------------------------------------  
-        if self._semantic_audit_pipeline is None:  
-            semantic_audit = self._semantic_not_executed()  
-        else:  
-            semantic_audit = self._semantic_audit_pipeline.run(  
-                embedded_text=artifact_integrity.embedded_text,  
-                embedded_payload=artifact_integrity.embedded_payload,  
-                visible_text=artifact_integrity.visible_text,  
+            await emitter.emit(  
+                AuditEvent(  
+                    audit_id=audit_id,  
+                    event_type=AuditEventType.AUDIT_COMPLETED,  
+                    details={  
+                        "status": status.value,  
+                        "recommendation": recommendation.value,  
+                        "report": report.model_dump(),  
+                    },  
+                )  
             )  
   
-        all_findings.extend(semantic_audit.findings)  
+            return report  
   
-        # --------------------------------------------------------------  
-        # 3. Seal Trust Verification (OPTIONAL HARD GATE)  
-        # --------------------------------------------------------------  
-        if self._seal_trust_verifier is None:  
-            seal_trust = self._seal_trust_not_executed()  
-        else:  
-            seal_trust = self._seal_trust_verifier.run(pdf_bytes)  
-  
-        all_findings.extend(seal_trust.findings)  
-  
-        # --------------------------------------------------------------  
-        # Final disposition (STRUCTURAL ONLY)  
-        # --------------------------------------------------------------  
-        status, recommendation = self._determine_outcome(  
-            artifact_integrity=artifact_integrity,  
-            seal_trust=seal_trust,  
-        )  
-  
-        return self._finalize_report(  
-            audit_id=audit_id,  
-            artifact_integrity=artifact_integrity,  
-            semantic_audit=semantic_audit,  
-            seal_trust=seal_trust,  
-            findings=all_findings,  
-            status=status,  
-            recommendation=recommendation,  
-        )  
+        except Exception as exc:  
+            await emitter.emit(  
+                AuditEvent(  
+                    audit_id=audit_id,  
+                    event_type=AuditEventType.AUDIT_FAILED,  
+                    details={  
+                        "error": str(exc),  
+                        "exception_type": type(exc).__name__,  
+                    },  
+                )  
+            )  
+            raise  
   
     # ------------------------------------------------------------------  
     # Structural helpers (NO SEMANTIC LOGIC)  
@@ -197,10 +319,15 @@ class AuditorCoordinator:
     def _determine_outcome(  
         *,  
         artifact_integrity: ArtifactIntegrityResult,  
+        semantic_audit: SemanticAuditResult,  
         seal_trust: SealTrustResult,  
     ) -> tuple[AuditStatus, DeliveryRecommendation]:  
         """  
         Determine final audit status and delivery recommendation.  
+  
+        IMPORTANT:  
+        - Uses ONLY structural signals  
+        - Does NOT inspect findings or semantic content  
         """  
   
         if not artifact_integrity.passed:  
@@ -208,6 +335,19 @@ class AuditorCoordinator:
   
         if seal_trust.executed and seal_trust.trusted is False:  
             return AuditStatus.FAIL, DeliveryRecommendation.NOT_READY  
+  
+        # ------------------------------------------------------  
+        # Pass 8 advisory delivery synthesis (STRUCTURAL ONLY)  
+        # ------------------------------------------------------  
+        for pass_result in semantic_audit.pass_results:  
+            if pass_result.pass_id == "P8":  
+                signals = set(pass_result.advisory_signals)  
+  
+                if "DELIVERY_NOT_RECOMMENDED" in signals:  
+                    return AuditStatus.FAIL, DeliveryRecommendation.NOT_READY  
+  
+                if "DELIVERY_REVIEW_REQUIRED" in signals:  
+                    return AuditStatus.PASS, DeliveryRecommendation.EXPERT_REVIEW_REQUIRED  
   
         return AuditStatus.PASS, DeliveryRecommendation.READY  
   

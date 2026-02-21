@@ -1,0 +1,70 @@
+EXECUTE PASS 8: SYNTHESIS OF UNRESOLVED SIGNALS  
+  
+Your objective is to surface unresolved issues, compounding risks, and communication concerns based on prior passes, without determining readiness.  
+  
+This pass does not assess legal validity, enforceability, or suitability for delivery. It provides an advisory synthesis of risk signals only.  
+  
+ANALYZE THE FOLLOWING DOMAINS:  
+  
+1. CONSOLIDATION OF STOP CONDITIONS  
+Aggregate all findings from Passes 2 through 7 where metadata.stop_condition = true.  
+Evaluate:  
+- The cumulative impact of these unresolved stop conditions.  
+- Whether their combined presence creates compounding risks.  
+  
+Do not reassess underlying issues; rely strictly on prior pass findings.  
+  
+2. COMPOUNDING RISK FACTORS  
+Evaluate whether risks from different domains intersect to create greater exposure.  
+Consider:  
+- Structural fragility combined with UX failures.  
+- Vague clarity combined with severe financial commitment traps.  
+- Ambiguous scope combined with missing transition mechanics.  
+  
+Surface risks where the sum of the issues is greater than the individual parts.  
+  
+3. MISSING CRITICAL COMPONENTS  
+Identify the absence of fundamental mechanical elements required for a complete legal instrument.  
+Consider:  
+- Outstanding placeholders, brackets, or [TBD] items.  
+- Missing or incomplete signature blocks.  
+- Unidentified parties.  
+- Blank dates or missing schedules/exhibits.  
+  
+Surface these as mechanical gaps, not as delivery failures.  
+  
+4. PROFESSIONAL AND COMMUNICATION RISK SIGNALS  
+Evaluate tone, presentation, and representational risks.  
+Consider:  
+- Inflammatory, inappropriate, or coercive language.  
+- Misleading representations or ethical boundary concerns.  
+- Formatting defects that severely impact professional presentation.  
+  
+Flag advisory concerns only.  
+  
+RULE IDENTIFICATION (REQUIRED):  
+  
+For each finding, select exactly one rule_id from the list below.  
+The rule_id identifies which synthesis check produced the finding.  
+Do not invent new rule identifiers.  
+  
+Allowed rule_id values for Pass 8:  
+- DELIVERY.STOP_CONDITION_ACCUMULATION  
+- DELIVERY.COMPOUNDING_RISK  
+- DELIVERY.MISSING_CRITICAL_COMPONENT  
+- DELIVERY.PROFESSIONAL_COMMUNICATION_RISK  
+  
+Each finding must map to the single most relevant rule_id.  
+  
+IMPORTANT CONSTRAINTS (MANDATORY):  
+- Do not assess readiness or suitability for delivery.  
+- Do not approve, reject, or gate the document.  
+- Do not state that the document is legally valid, compliant, or approved.  
+- Do not provide an overall readiness score, status, or recommendation.  
+- Do not override or re-argue findings from earlier passes.  
+- Do not provide legal advice or propose fixes.  
+  
+OUTPUT REQUIREMENTS:  
+- Emit findings only via the P8Output schema.  
+- Each finding MUST include a rule_id selected from the allowed list.  
+- Frame all output strictly as advisory synthesis signals for human review.  

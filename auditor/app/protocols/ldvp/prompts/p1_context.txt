@@ -1,66 +1,119 @@
-You are executing Pass 1 of the Legal Document Verification Protocol (LDVP).  
+EXECUTE PASS 1: CONTEXT MAPPING & CLASSIFICATION  
   
-This is an advisory document quality analysis. Your role is to identify potential context, classification, and framing issues for human review. You must not assert legal validity, determine compliance, or decide delivery readiness.  
+Your objective is to establish a clear, high‑confidence understanding of the document’s nature, category, audience, jurisdictional context, purpose, and stakes.  
   
-PASS 1 OBJECTIVE:  
-Establish a clear understanding of the document’s nature, purpose, audience, jurisdictional context, and risk framing. This pass provides foundational context that informs later analysis passes.  
+This pass provides foundational context only. It does not evaluate usability, clarity, structure, accuracy, completeness, fairness, risk, compliance, or enforceability.  
   
-WHAT TO ANALYZE:  
-Analyze the provided document and determine, to the best of your ability based solely on its contents:  
+Ambiguity is not a failure in this pass. Where the document does not support confident conclusions, surface uncertainty explicitly rather than inferring missing facts.  
   
-1. Document classification  
-   - Apparent document type (e.g., contract, policy, filing, court document, internal guideline)  
-   - More specific subtype if apparent (e.g., NDA, SaaS agreement, employment agreement)  
+ANALYZE THE FOLLOWING DOMAINS:  
   
-2. Document category (contextual classification)  
-   - CONSUMER_ADHESION_CONTRACT  
-   - B2B_BILATERAL_CONTRACT  
-   - B2B_ADHESION_CONTRACT  
-   - EMPLOYMENT_DOCUMENT  
-   - BILATERAL_CONFIDENTIALITY  
-   - UNILATERAL_CONFIDENTIALITY  
-   - REGULATORY_FILING  
-   - COURT_DOCUMENT  
-   - INTERNAL_POLICY  
-   - OTHER  
+1. DOCUMENT TYPE AND SUBTYPE  
+Identify the apparent legal document type and, where possible, a more specific subtype.  
+Examples include (non‑exhaustive):  
+- Contract, agreement, policy, filing, court document, internal guideline  
+- NDA, SaaS agreement, employment agreement, terms of service, privacy policy, regulatory submission, motion, brief  
   
-   If the document category is unclear, conflicting, or difficult to determine,  
-   report this uncertainty or ambiguity as an advisory finding rather than as  
-   a standalone classification.  
+If the document does not clearly fit a conventional type, appears to combine multiple types, or sends conflicting signals, surface that ambiguity explicitly.  
   
-3. Jurisdictional context  
-   - Any stated or implied governing law  
-   - Any stated or implied jurisdiction(s)  
-   - Note uncertainty if jurisdiction cannot be determined  
+2. DOCUMENT CATEGORY (ADAPTIVE CLASSIFICATION)  
+Classify the document into its primary category from the following list:  
+- CONSUMER_ADHESION_CONTRACT  
+- B2B_BILATERAL_CONTRACT  
+- B2B_ADHESION_CONTRACT  
+- EMPLOYMENT_DOCUMENT  
+- BILATERAL_CONFIDENTIALITY  
+- UNILATERAL_CONFIDENTIALITY  
+- REGULATORY_FILING  
+- COURT_DOCUMENT  
+- INTERNAL_POLICY  
+- OTHER (specify)  
   
-4. Parties and audience  
-   - Identify the parties or stakeholders involved  
-   - Describe the intended audience and their likely level of legal sophistication  
-   - Note any apparent power imbalance  
+Base this classification on observable factors such as:  
+- Negotiability (negotiated vs non‑negotiable)  
+- Parties involved (consumer, business, employer/employee)  
+- Apparent power imbalance  
+- Primary purpose of the document  
   
-5. Purpose and function  
-   - What the document appears intended to accomplish  
-   - What relationships, behaviors, or obligations it governs  
+If classification is uncertain or weakly supported, record that uncertainty as a finding rather than asserting a definitive category.  
   
-6. Stakes and risk framing  
-   - Apparent financial, legal, or operational stakes  
-   - Consequences if the document is misunderstood or fails  
-   - Overall risk framing, mapped to advisory severity levels  
-     (INFO / MINOR / MAJOR / CRITICAL)  
+3. JURISDICTIONAL AND LEGAL CONTEXT  
+Identify any stated or reasonably implied jurisdictional context, including:  
+- Governing law clauses  
+- Venue or forum references  
+- Regulatory regimes explicitly referenced  
+- Indications of applicable legal system (e.g., common law, civil law)  
   
-7. Context clarity  
-   - Note any ambiguity, missing context, or contradictions that prevent  
-     confident classification or understanding  
-   - If key context is missing or unclear, surface this as an advisory finding  
+If no jurisdiction or governing law can be identified, surface this absence explicitly as a contextual risk signal.  
+  
+4. PARTIES, STAKEHOLDERS, AND AUDIENCE  
+Identify:  
+- Named parties or stakeholders  
+- Their apparent roles and interests  
+- The intended audience of the document  
+- The likely level of legal sophistication of that audience  
+  
+Note any apparent power imbalance that may influence interpretation in later analysis, without drawing conclusions.  
+  
+5. PURPOSE AND FUNCTION  
+Describe what the document appears intended to accomplish, including:  
+- The relationship it governs  
+- The behaviors, obligations, or rights it establishes  
+- The problem it is designed to manage or resolve  
+  
+Surface any tension or inconsistency between stated purpose and operative content.  
+  
+6. STAKES AND RISK FRAMING (CONTEXTUAL ONLY)  
+Identify the apparent stakes if the document is misunderstood, misapplied, or fails, such as:  
+- Financial exposure  
+- Legal liability  
+- Operational impact  
+- Reputational harm  
+  
+Frame these stakes qualitatively (e.g., low, moderate, high, critical) as contextual background only, not as conclusions.  
+  
+7. CONTEXTUAL CLARITY AND GAPS  
+Identify:  
+- Missing foundational context  
+- Ambiguous framing that impairs confident understanding  
+- Contradictions that prevent coherent interpretation  
+- Assumptions the document appears to make about reader knowledge or external facts  
+  
+RULE IDENTIFICATION (REQUIRED):  
+  
+For each finding, select exactly one rule_id from the list below.  
+The rule_id identifies which contextual analysis check produced the finding.  
+Do not invent new rule identifiers.  
+  
+Allowed rule_id values for Pass 1:  
+- CONTEXT.DOCUMENT_TYPE_AMBIGUOUS  
+- CONTEXT.DOCUMENT_CATEGORY_UNCERTAIN  
+- CONTEXT.JURISDICTION_NOT_IDENTIFIED  
+- CONTEXT.JURISDICTION_AMBIGUOUS  
+- CONTEXT.PARTIES_OR_ROLES_UNCLEAR  
+- CONTEXT.AUDIENCE_UNCLEAR  
+- CONTEXT.POWER_IMBALANCE_SIGNAL  
+- CONTEXT.PURPOSE_CONFLICT  
+- CONTEXT.PURPOSE_UNCLEAR  
+- CONTEXT.STAKES_UNCLEAR  
+- CONTEXT.FOUNDATIONAL_CONTEXT_MISSING  
+- CONTEXT.INTERNAL_CONTRADICTION  
+  
+Each finding must map to the single most relevant rule_id.  
   
 IMPORTANT CONSTRAINTS:  
-- Do not reference or execute other LDVP passes.  
-- Do not enforce stop conditions or halt analysis.  
-- If information is unclear or cannot be determined, surface this as an advisory finding.  
-- Frame all issues as potential concerns for human review, not conclusions.  
-- Assign a confidence level (HIGH / MEDIUM / LOW) reflecting how certain you are based on the document text alone.  
+- Do not assess usability, clarity, structure, accuracy, completeness, risk, or compliance.  
+- Do not assert legal validity, enforceability, or readiness for delivery.  
+- Do not reference or anticipate later LDVP passes.  
+- Do not resolve ambiguity; surface it.  
+  
+STOP CONDITION SIGNALS (ADVISORY ONLY):  
+Set metadata.stop_condition = true if:  
+- The document’s type, category, or jurisdiction cannot be determined with reasonable confidence, OR  
+- A material conflict between stated purpose and operative content prevents basic contextual understanding.  
   
 OUTPUT REQUIREMENTS:  
-Respond with VALID JSON ONLY.  
-Your response must strictly conform to the provided Pass 1 output schema.  
-Do not include markdown, comments, explanations, or additional text outside the JSON object.  
+- Emit findings only via the P1Output schema.  
+- Each finding MUST include a rule_id selected from the allowed list.  
+- Ensure each finding includes a confidence level based solely on document content.  
+- Surface uncertainty explicitly rather than inferring missing facts.  

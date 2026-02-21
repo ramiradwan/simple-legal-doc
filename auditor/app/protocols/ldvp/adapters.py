@@ -8,11 +8,13 @@ IMPORTANT:
 - Adapters do NOT make judgments.  
 - Adapters do NOT interpret legal validity.  
 - Adapters ONLY normalize protocol-specific outputs.  
+- Adapters ARE the authority for stable finding identity.  
 """  
   
 from __future__ import annotations  
   
 import hashlib  
+import json  
 from typing import Any  
   
 from pydantic import BaseModel  
@@ -27,10 +29,25 @@ from auditor.app.schemas.findings import (
     FindingCategory,  
 )  
   
-  
 # ----------------------------------------------------------------------  
 # Utilities  
 # ----------------------------------------------------------------------  
+  
+  
+def _canonicalize_payload(payload: dict) -> str:  
+    """  
+    Canonicalize the embedded semantic payload for stable hashing.  
+  
+    This MUST match the payload extracted and frozen by  
+    Artifact Integrity Audit.  
+    """  
+    return json.dumps(  
+        payload,  
+        sort_keys=True,  
+        separators=(",", ":"),  
+        ensure_ascii=False,  
+    )  
+  
   
 def _stable_finding_suffix(material: str) -> str:  
     """  
@@ -39,9 +56,33 @@ def _stable_finding_suffix(material: str) -> str:
     return hashlib.sha256(material.encode("utf-8")).hexdigest()[:12]  
   
   
+def _normalize_metadata(raw_metadata: Any) -> dict | None:  
+    """  
+    Normalize protocol-specific metadata into a dict.  
+  
+    IMPORTANT:  
+    - FindingObject expects a dict  
+    - Pydantic will rehydrate this into a metadata model  
+    """  
+    if raw_metadata is None:  
+        return None  
+  
+    if isinstance(raw_metadata, BaseModel):  
+        return raw_metadata.model_dump()  
+  
+    if isinstance(raw_metadata, dict):  
+        return raw_metadata  
+  
+    raise TypeError(  
+        "Unsupported metadata type for FindingObject.metadata: "  
+        f"{type(raw_metadata).__name__}"  
+    )  
+  
+  
 # ----------------------------------------------------------------------  
 # Base LDVP Adapter  
 # ----------------------------------------------------------------------  
+  
   
 class LDVPFindingAdapter(FindingAdapter):  
     """  
@@ -53,9 +94,9 @@ class LDVPFindingAdapter(FindingAdapter):
     def __init__(  
         self,  
         *,  
+        pass_id: str,  
         protocol_id: str = "LDVP",  
         protocol_version: str = "2.3",  
-        pass_id: str,  
     ) -> None:  
         self._protocol_id = protocol_id  
         self._protocol_version = protocol_version  
@@ -71,10 +112,26 @@ class LDVPFindingAdapter(FindingAdapter):
         raw_finding: BaseModel,  
         source: FindingSource,  
         sequence: int,  
+        semantic_payload: dict,  
     ) -> Finding:  
         """  
         Adapt a raw LDVP finding into a canonical FindingObject.  
+  
+        Stable finding identity is derived ONLY from immutable facts:  
+        - protocol identity  
+        - protocol version  
+        - pass identity  
+        - rule_id (prompt-defined heuristic)  
+        - finding category  
+        - finding location (if any)  
+        - canonical embedded payload  
+  
+        LLM-generated text and execution order MUST NOT affect identity.  
         """  
+  
+        # ------------------------------------------------------------------  
+        # Required semantic fields  
+        # ------------------------------------------------------------------  
   
         title: str = raw_finding.title  
         description: str = raw_finding.description  
@@ -83,17 +140,58 @@ class LDVPFindingAdapter(FindingAdapter):
         severity: Severity = raw_finding.severity  
         confidence: ConfidenceLevel = raw_finding.confidence  
         category: FindingCategory = raw_finding.category  
+        location = getattr(raw_finding, "location", None)  
   
-        hash_material = (  
-            f"{self._protocol_id}:{self._protocol_version}:"  
-            f"{self._pass_id}:{sequence}:{description}"  
+        # ------------------------------------------------------------------  
+        # rule_id (MANDATORY)  
+        # ------------------------------------------------------------------  
+  
+        rule_id = getattr(raw_finding, "rule_id", None)  
+        if not rule_id:  
+            raise ValueError(  
+                f"LDVP finding from pass {self._pass_id} "  
+                "is missing required rule_id"  
+            )  
+  
+        # ------------------------------------------------------------------  
+        # Canonical payload  
+        # ------------------------------------------------------------------  
+  
+        canonical_payload = _canonicalize_payload(semantic_payload)  
+  
+        # ------------------------------------------------------------------  
+        # Stable identity material (AUTHORITATIVE)  
+        # ------------------------------------------------------------------  
+  
+        hash_material = "|".join(  
+            [  
+                self._protocol_id,  
+                self._protocol_version,  
+                self._pass_id,  
+                rule_id,  
+                category.value,  
+                location or "",  
+                canonical_payload,  
+            ]  
         )  
+  
         suffix = _stable_finding_suffix(hash_material)  
   
+        # NOTE: sequence is intentionally NOT part of the finding_id  
         finding_id = (  
             f"{self._protocol_id}-{self._pass_id}-"  
-            f"{severity.value.upper()}-{sequence:03d}-{suffix}"  
+            f"{severity.value.upper()}-{suffix}"  
         )  
+  
+        # ------------------------------------------------------------------  
+        # Metadata (DICT ONLY – rehydrated by FindingObject)  
+        # ------------------------------------------------------------------  
+  
+        metadata = _normalize_metadata(  
+            getattr(raw_finding, "metadata", None)  
+        ) or {}  
+  
+        metadata["rule_id"] = rule_id  
   
         return Finding(  
             finding_id=finding_id,  
@@ -108,13 +206,12 @@ class LDVPFindingAdapter(FindingAdapter):
             title=title,  
             description=description,  
             why_it_matters=why_it_matters,  
-            location=getattr(raw_finding, "location", None),  
-            suggested_fix=getattr(raw_finding, "suggested_fix", None),  
-            metadata=getattr(raw_finding, "metadata", None),  
+            location=location,  
+            metadata=metadata,  
         )  
   
     # ------------------------------------------------------------------  
-    # Execution / reliability failures (NEW in Sprint 2)  
+    # Execution / reliability failures  
     # ------------------------------------------------------------------  
   
     def adapt_execution_failure(  
@@ -126,29 +223,35 @@ class LDVPFindingAdapter(FindingAdapter):
     ) -> Finding:  
         """  
         Adapt an LLM execution failure into a canonical advisory finding.  
+  
+        Finding IDs MUST be stable across runs for the same failure type.  
+        Execution failures do NOT use rule_id.  
         """  
   
-        # Deterministic classification  
         if failure_type == "timeout":  
             severity = Severity.MINOR  
             confidence = ConfidenceLevel.HIGH  
             category = FindingCategory.EXECUTION_READINESS  
             title = "Semantic audit execution timed out"  
+  
         elif failure_type == "retry_exhausted":  
             severity = Severity.MAJOR  
             confidence = ConfidenceLevel.HIGH  
             category = FindingCategory.EXECUTION_READINESS  
             title = "Semantic audit execution failed after retries"  
+  
         elif failure_type == "schema_violation":  
             severity = Severity.MAJOR  
             confidence = ConfidenceLevel.HIGH  
             category = FindingCategory.STRUCTURE  
             title = "Semantic audit returned invalid structured output"  
+  
         elif failure_type == "refusal":  
             severity = Severity.INFO  
             confidence = ConfidenceLevel.MEDIUM  
             category = FindingCategory.ETHICAL  
             title = "Semantic audit request was refused by the model"  
+  
         else:  
             severity = Severity.MAJOR  
             confidence = ConfidenceLevel.MEDIUM  
@@ -162,14 +265,17 @@ class LDVPFindingAdapter(FindingAdapter):
         )  
   
         hash_material = (  
-            f"{self._protocol_id}:{self._protocol_version}:"  
+            f"{self._protocol_id}:"  
+            f"{self._protocol_version}:"  
             f"{self._pass_id}:execution:{failure_type}"  
         )  
+  
         suffix = _stable_finding_suffix(hash_material)  
   
+        # sequence intentionally excluded from identity  
         finding_id = (  
             f"{self._protocol_id}-{self._pass_id}-"  
-            f"EXECUTION-{sequence:03d}-{suffix}"  
+            f"EXECUTION-{suffix}"  
         )  
   
         return Finding(  

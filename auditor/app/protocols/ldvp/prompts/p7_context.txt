@@ -1,0 +1,131 @@
+EXECUTE PASS 7: RISK & COMPLIANCE ASSESSMENT  
+  
+Your objective is to identify risk indicators and potential compliance concerns that warrant expert legal review, based on the document’s structure, allocations, and operative effects.  
+  
+This pass does not determine legality, enforceability, or regulatory compliance. All findings are advisory risk signals only.  
+  
+The emphasis and heuristics applied must adapt to the DocumentCategory identified in Pass 1.  
+  
+ANALYZE THE FOLLOWING DOMAINS:  
+  
+1. ONE-SIDED OBLIGATIONS AND STRUCTURAL ASYMMETRY  
+Evaluate whether obligations, rights, and discretion are materially imbalanced.  
+Consider:  
+- Disproportionate duties imposed on one party  
+- Unilateral modification or termination rights  
+- Unilateral discretion without meaningful constraints  
+- Obligations triggered without reciprocal benefit  
+  
+Surface risk indicators of structural imbalance.  
+  
+2. FINANCIAL RISK EXPOSURE AND COMMITMENT TRAPS  
+Evaluate financial commitment structures.  
+Consider:  
+- Non-cancelable or non-refundable fees  
+- Automatic renewal mechanisms  
+- Variable pricing or usage-based escalation  
+- Financial penalties disproportionate to foreseeable harm  
+- Commitments triggered by events outside a party’s control  
+  
+Identify risk indicators where financial exposure may be difficult to anticipate or exit.  
+  
+3. EXIT RIGHTS AND TERMINATION SYMMETRY  
+Evaluate termination and exit mechanics.  
+Consider:  
+- Asymmetry in termination for convenience  
+- Disparities in notice periods or cure rights  
+- Punitive or one-sided termination fees  
+- Survival of financial obligations post-termination  
+- Data, asset, or service transition barriers  
+  
+Surface risks where exit is functionally constrained or financially coercive.  
+  
+4. LOGICAL AND CONDITIONAL RISK STRUCTURES (CRITICAL SIGNALS)  
+Evaluate complex conditional logic that may create hidden risk.  
+Consider:  
+- Broken “if–then” structures where triggers no longer function  
+- Conditions precedent that are impossible, already satisfied, or internally contradictory  
+- Clauses labeled as “mutual” that are substantively non-reciprocal  
+- Exceptions, carve-outs, or “subject to” clauses that swallow the primary rule  
+  
+These issues are often missed in review and should be treated as high-signal risk indicators.  
+  
+5. SUBSTANTIVE INCONSISTENCIES ACROSS THE DOCUMENT  
+Evaluate whether substantively similar concepts are treated inconsistently.  
+Consider:  
+- Inconsistent standards of effort applied to similar obligations  
+- Divergent thresholds, notice periods, or cure periods without clear rationale  
+- Rights granted in one section and materially limited or negated elsewhere  
+  
+Surface risks of dispute or unenforceability arising from internal inconsistency.  
+  
+6. DATA, PRIVACY, AND INFORMATION RISK (WHEN APPLICABLE)  
+Evaluate provisions affecting data and information handling.  
+Consider:  
+- Broad or ambiguous data use rights  
+- Unclear ownership or control of data or work product  
+- Security commitments misaligned with sensitivity or risk  
+- Asymmetric audit, access, or inspection rights  
+  
+Surface indicators of heightened confidentiality or data risk.  
+  
+7. REGULATORY AND JURISDICTIONAL RISK SIGNALS  
+Identify clauses that may intersect with regulated or jurisdiction-sensitive domains.  
+Examples:  
+- Consumer protection, employment, or financial services  
+- Health, education, or minors  
+- Cross-border data transfer or international operations  
+- Choice of law or forum selection provisions  
+  
+Do not assess compliance. Flag areas likely requiring specialist review.  
+  
+8. CONTEXT-SENSITIVE FAIRNESS AND ADHESION RISK  
+Based on document category and audience:  
+Evaluate whether the structure raises fairness concerns.  
+Consider:  
+- Adhesion contracts with limited or no negotiation  
+- Power imbalances between parties  
+- Vulnerable or dependent counterparties  
+  
+For non-negotiable B2B agreements, assess risks such as:  
+- Financial commitment traps  
+- Unilateral change rights  
+- Automatic escalation of obligations  
+- Absence of meaningful service level or quality floors  
+  
+Frame all findings as risk indicators, not conclusions.  
+  
+RULE IDENTIFICATION (REQUIRED):  
+  
+For each finding, select exactly one rule_id from the list below.  
+The rule_id identifies which risk or compliance analysis check produced the finding.  
+Do not invent new rule identifiers.  
+  
+Allowed rule_id values for Pass 7:  
+- RISK.ONE_SIDED_OBLIGATIONS  
+- RISK.FINANCIAL_COMMITMENT_TRAP  
+- RISK.EXIT_ASYMMETRY  
+- RISK.CONDITIONAL_LOGIC_FAILURE  
+- RISK.SUBSTANTIVE_INCONSISTENCY  
+- RISK.DATA_PRIVACY_EXPOSURE  
+- RISK.REGULATORY_TOUCHPOINT  
+- RISK.ADHESION_OR_FAIRNESS_SIGNAL  
+  
+Each finding must map to the single most relevant rule_id.  
+  
+IMPORTANT CONSTRAINTS:  
+- Do not state that any provision is illegal, unenforceable, or non-compliant.  
+- Do not provide legal advice or recommendations.  
+- Do not recommend acceptance or rejection.  
+- Do not assess usability or clarity.  
+  
+STOP CONDITION SIGNALS (ADVISORY ONLY):  
+Set metadata.stop_condition = true if:  
+- Risk indicators suggest immediate expert escalation is necessary, OR  
+- Structural risk or asymmetry appears materially severe.  
+  
+OUTPUT REQUIREMENTS:  
+- Emit findings only via the P7Output schema.  
+- Each finding MUST include a rule_id selected from the allowed list.  
+- Frame all findings as risks requiring human evaluation.  
+- Use confidence levels to reflect strength of the signal.  

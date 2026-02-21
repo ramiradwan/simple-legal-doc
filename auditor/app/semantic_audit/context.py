@@ -1,5 +1,9 @@
-from typing import Dict, Any, Optional  
-from pydantic import BaseModel, Field, ConfigDict  
+from typing import Dict, Any, Optional, List  
+  
+from pydantic import BaseModel, Field, ConfigDict, PrivateAttr  
+  
+from auditor.app.events import AuditEventEmitter  
+from auditor.app.schemas.findings import FindingObject  
   
   
 class SemanticAuditContext(BaseModel):  
@@ -34,7 +38,7 @@ class SemanticAuditContext(BaseModel):
     )  
   
     # ------------------------------------------------------------------  
-    # Execution metadata (NON-AUTHORITATIVE, OPTIONAL)  
+    # Execution metadata (NON-AUTHORITATIVE, OPTIONAL, DIAGNOSTIC ONLY)  
     # ------------------------------------------------------------------  
     audit_id: Optional[str] = Field(  
         None,  
@@ -63,10 +67,45 @@ class SemanticAuditContext(BaseModel):
   
     prompt_hash: Optional[str] = Field(  
         None,  
-        description="Hash of the prompt fragment used (diagnostic only)",  
+        description=(  
+            "Hash of the prompt fragment used (diagnostic only; "  
+            "presence is not guaranteed)"  
+        ),  
     )  
+  
+    # ------------------------------------------------------------------  
+    # Runtime-only plumbing (NOT model fields)  
+    # ------------------------------------------------------------------  
+    _emitter: Optional[AuditEventEmitter] = PrivateAttr(default=None)  
+  
+    # Pipeline-owned execution state (read-only to passes)  
+    _all_findings: List[FindingObject] = PrivateAttr(default_factory=list)  
+    _executed_pass_ids: List[str] = PrivateAttr(default_factory=list)  
   
     model_config = ConfigDict(  
         frozen=True,  
         extra="forbid",  
     )  
+  
+    # ------------------------------------------------------------------  
+    # Convenience accessors (safe, read-only)  
+    # ------------------------------------------------------------------  
+    @property  
+    def emitter(self) -> Optional[AuditEventEmitter]:  
+        return self._emitter  
+  
+    def all_findings(self) -> List[FindingObject]:  
+        """  
+        Return a snapshot of all findings emitted so far.  
+  
+        This is a read-only view. Callers MUST NOT mutate the returned list.  
+        """  
+        return list(self._all_findings)  
+  
+    def executed_pass_ids(self) -> List[str]:  
+        """  
+        Return the ordered list of executed semantic pass IDs.  
+  
+        This is a read-only view. Callers MUST NOT mutate the returned list.  
+        """  
+        return list(self._executed_pass_ids)  

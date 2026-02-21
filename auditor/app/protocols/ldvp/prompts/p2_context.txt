@@ -1,0 +1,114 @@
+EXECUTE PASS 2: USER EXPERIENCE & USABILITY ANALYSIS  
+  
+Your objective is to evaluate whether the document’s format, structure, and presentation pragmatically support the intended users’ real‑world workflows and decision‑making needs.  
+  
+This pass focuses on usability and interaction design, not linguistic clarity, factual accuracy, legal compliance, or enforceability.  
+  
+Issues identified here often require format or structural changes. Because such changes alter how the document is used, this pass intentionally occurs before clarity and accuracy analysis.  
+  
+ANALYZE THE FOLLOWING DOMAINS:  
+  
+1. DOCUMENT FORMAT AND MEDIUM APPROPRIATENESS  
+Evaluate whether the chosen format aligns with how the intended audience is expected to engage with the document.  
+Consider:  
+- Whether the medium (e.g., dense PDF, static text, form agreement) matches user context and capacity  
+- Whether document length is appropriate for its purpose  
+- Whether effective use requires simultaneous reference to multiple documents  
+- Whether the format enables or obstructs required user actions  
+  
+Surface critical concerns where the format itself prevents meaningful use or compliance.  
+  
+2. FINDABILITY AND NAVIGATION  
+Evaluate whether users can efficiently locate critical information without reading the entire document.  
+Consider:  
+- Presence and quality of navigational structure (tables of contents, headers, numbering)  
+- Logical organization of sections  
+- Visibility of key obligations, rights, deadlines, and consequences  
+- Whether critical provisions are buried in dense or obscure sections  
+  
+Flag situations where important commitments are difficult to discover.  
+  
+3. ACTIONABILITY AND TASK CLARITY  
+Evaluate whether users can determine:  
+- What actions they are required to take  
+- When those actions must occur  
+- Who is responsible for each action  
+- What happens if actions are not taken  
+  
+Identify failures where users cannot reasonably determine how to comply in practice.  
+  
+4. REAL‑WORLD USER JOURNEYS AND PRACTICALITY  
+Evaluate whether the document supports realistic use scenarios.  
+Consider:  
+- Whether assumptions about user knowledge, resources, or coordination are reasonable  
+- Whether obligations are practically achievable  
+- Whether common or foreseeable scenarios are addressed  
+- Whether the document reflects how it would actually be used over time  
+  
+Surface usability risks where compliance appears impractical or unrealistic.  
+  
+5. MULTI‑STAKEHOLDER USABILITY  
+Evaluate whether the document serves all relevant audiences.  
+Consider:  
+- Primary users (e.g., consumers, employees, customers)  
+- Secondary stakeholders (e.g., internal operators, compliance teams, regulators)  
+  
+Identify situations where the document is optimized for one stakeholder at severe expense to others, creating operational or compliance friction.  
+  
+6. LEGAL DESIGN AND USER‑CENTERED STRUCTURE  
+Evaluate the document against modern legal design principles.  
+Consider:  
+- Whether the structure is user‑centered or lawyer‑centered  
+- Whether critical information is appropriately emphasized  
+- Whether complex concepts are presented in a way users can practically navigate  
+  
+Surface usability concerns where design choices materially impair understanding or execution.  
+  
+7. FINANCIAL COMMITMENT PROMINENCE (WHEN APPLICABLE)  
+For documents involving payment or financial obligation, evaluate whether financial commitments are transparently and prominently disclosed.  
+Consider:  
+- Visibility of payment amounts and fee structures  
+- Prominence of non‑cancelable or non‑refundable terms  
+- Clarity of automatic renewal provisions  
+- Disclosure of variable, usage‑based, or escalating fees  
+- Whether users can reasonably estimate total cost from the document alone  
+  
+Flag critical concerns where financial obligations are obscured, fragmented, or buried in non‑obvious locations.  
+  
+RULE IDENTIFICATION (REQUIRED):  
+  
+For each finding, select exactly one rule_id from the list below.  
+The rule_id identifies which usability analysis check produced the finding.  
+Do not invent new rule identifiers.  
+  
+Allowed rule_id values for Pass 2:  
+- UX.FORMAT_MEDIUM_MISMATCH  
+- UX.LENGTH_OR_DENSITY_EXCESSIVE  
+- UX.NAVIGATION_DEFICIENT  
+- UX.KEY_INFORMATION_HARD_TO_FIND  
+- UX.ACTIONS_UNCLEAR  
+- UX.DEADLINES_OR_CONSEQUENCES_UNCLEAR  
+- UX.COMPLIANCE_IMPRACTICAL  
+- UX.UNREALISTIC_USER_ASSUMPTIONS  
+- UX.MULTI_STAKEHOLDER_FRICTION  
+- UX.LEGAL_DESIGN_POOR  
+- UX.FINANCIAL_TERMS_OBSCURED  
+  
+Each finding must map to the single most relevant rule_id.  
+  
+IMPORTANT CONSTRAINTS:  
+- Do not assess linguistic clarity, factual accuracy, legal compliance, or enforceability.  
+- Do not score, rate, or rank usability.  
+- Do not propose specific redesigns or fixes.  
+- Do not assert unconscionability or legal invalidity.  
+- Frame all observations as usability and user‑risk signals requiring human review.  
+  
+STOP CONDITION SIGNALS (ADVISORY ONLY):  
+Set metadata.stop_condition = true if:  
+- The document format is fundamentally mismatched to the intended audience and requires structural redesign, OR  
+- Critical usability failures make it impossible for users to identify required actions or comply in practice.  
+  
+OUTPUT REQUIREMENTS:  
+- Emit findings only via the P2Output schema.  
+- Each finding MUST include a rule_id selected from the allowed list.  
+- Ensure each finding includes severity, confidence, and rationale.  

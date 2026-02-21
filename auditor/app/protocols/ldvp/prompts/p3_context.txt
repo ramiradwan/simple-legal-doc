@@ -1,0 +1,133 @@
+EXECUTE PASS 3: CLARITY & ACCESSIBILITY ANALYSIS  
+  
+Your objective is to identify linguistic, structural, and accessibility issues that impair comprehension, increase interpretive ambiguity, or create risk of misunderstanding.  
+  
+This pass focuses on how the document is written, not whether it is correct, complete, fair, or enforceable.  
+  
+Clarity issues identified here often require rewriting. Because rewriting changes the text, this pass intentionally occurs before deeper accuracy or risk verification.  
+  
+ANALYZE THE FOLLOWING DOMAINS:  
+  
+1. LANGUAGE APPROPRIATENESS FOR TARGET AUDIENCE  
+Evaluate whether the language aligns with the sophistication and expectations of the intended audience identified in Pass 1.  
+Consider:  
+- Excessive legalese or jargon  
+- Technical terminology used without explanation  
+- Assumptions about legal or domain knowledge  
+- Mismatch between audience and linguistic complexity  
+  
+Surface issues where language likely exceeds reasonable comprehension for the intended readers.  
+  
+2. SENTENCE-LEVEL CLARITY AND AMBIGUITY  
+Evaluate sentence construction for:  
+- Unnecessarily long or complex sentences  
+- Ambiguous phrasing or structure  
+- Modifier placement that could alter meaning  
+- Passive voice that obscures agency or responsibility  
+- Pronouns or references with unclear antecedents  
+  
+Identify provisions that could reasonably be interpreted in more than one way.  
+  
+3. PARAGRAPH AND SECTION COHERENCE  
+Evaluate whether information is logically grouped and sequenced.  
+Consider:  
+- Abrupt topic shifts  
+- Poor transitions between concepts  
+- Redundant or circular explanations  
+- Mixing unrelated obligations within a single provision  
+  
+Surface coherence issues that impair readability even if individual sentences are clear.  
+  
+4. READABILITY AND ACCESSIBILITY SIGNALS  
+Use readability indicators (e.g., sentence length, grade‑level proxies) as supporting signals only, not as determinative rules.  
+Evaluate whether:  
+- Overall complexity aligns with audience expectations  
+- Critical obligations are written at an accessible level  
+- High‑complexity language clusters around high‑risk provisions  
+  
+Where readability materially exceeds audience capacity, surface this as an accessibility concern.  
+  
+5. VAGUE OR ELASTIC TERMINOLOGY  
+Identify chronically vague or elastic terms that create uncertainty.  
+Examples include:  
+- “reasonable,” “promptly,” “substantial,” “material,” “as necessary”  
+- Undefined standards of effort  
+- Open‑ended qualifiers without contextual anchors  
+  
+Evaluate whether such terms are constrained or create interpretive risk.  
+  
+6. FALSE PRECISION AND OVER‑SPECIFICATION  
+Identify instances where language implies a level of certainty or precision unlikely to be achievable in practice.  
+Consider:  
+- Overly specific timelines or performance metrics  
+- Pseudo‑scientific measurements for subjective concepts  
+- Detailed specifications that increase brittleness rather than clarity  
+  
+Surface risks where false precision increases misunderstanding or dispute likelihood.  
+  
+7. ENUMERATIONS AND SCOPE IMPLICATIONS  
+Evaluate lists and enumerations for unintended scope effects.  
+Consider:  
+- Whether lists appear exhaustive when they are not  
+- Whether examples unintentionally narrow broader obligations  
+- Absence of language clarifying illustrative versus exhaustive intent  
+  
+Surface risks where enumerations may create unintended exclusions.  
+  
+8. DEFINITIONS THAT APPEAR OBJECTIVE BUT ARE NOT  
+Evaluate defined terms for practical applicability.  
+Consider:  
+- Definitions requiring specialized expertise to apply  
+- Definitions that sound objective but are inherently subjective  
+- Terms that cannot be consistently measured or operationalized  
+  
+Identify definitions that create false confidence or ambiguity in application.  
+  
+9. AGE‑APPROPRIATENESS AND MINORS (WHEN APPLICABLE)  
+When the document explicitly targets or binds minors, or specifies a minimum age:  
+Evaluate whether language is appropriate for that age group.  
+Consider:  
+- Overall readability relative to stated age  
+- Clarity of critical obligations and consequences  
+- Explanation of complex legal concepts  
+- Presence or absence of parental involvement mechanisms where indicated  
+  
+Surface critical concerns where minors may not reasonably understand what they are agreeing to.  
+  
+RULE IDENTIFICATION (REQUIRED):  
+  
+For each finding, select exactly one rule_id from the list below.  
+The rule_id identifies which clarity or accessibility analysis check produced the finding.  
+Do not invent new rule identifiers.  
+  
+Allowed rule_id values for Pass 3:  
+- CLARITY.LEGALESE_OR_JARGON_EXCESSIVE  
+- CLARITY.AUDIENCE_LANGUAGE_MISMATCH  
+- CLARITY.SENTENCE_AMBIGUITY  
+- CLARITY.UNCLEAR_REFERENCES  
+- CLARITY.PARAGRAPH_INCOHERENT  
+- ACCESSIBILITY.READABILITY_TOO_HIGH  
+- CLARITY.VAGUE_TERMS  
+- CLARITY.FALSE_PRECISION  
+- CLARITY.ENUMERATION_SCOPE_RISK  
+- CLARITY.DEFINITION_NOT_OPERATIONAL  
+- ACCESSIBILITY.MINORS_NOT_APPROPRIATELY_ADDRESSED  
+  
+Each finding must map to the single most relevant rule_id.  
+  
+IMPORTANT CONSTRAINTS:  
+- Do not verify factual accuracy or legal correctness.  
+- Do not propose rewritten text or stylistic edits.  
+- Do not assess usability or document format.  
+- Do not assert legal invalidity or enforceability.  
+  
+STOP CONDITION SIGNALS (ADVISORY ONLY):  
+Set metadata.stop_condition = true if:  
+- Clarity failures create a material risk that core obligations or rights will be misunderstood, OR  
+- The document binds minors using language far beyond reasonable comprehension for the stated age group.  
+  
+OUTPUT REQUIREMENTS:  
+- Emit findings only via the P3Output schema.  
+- Each finding MUST include a rule_id selected from the allowed list.  
+- Ensure each finding clearly describes the clarity or ambiguity risk and its potential impact.  
+- Use confidence levels reflecting certainty based on the text.  

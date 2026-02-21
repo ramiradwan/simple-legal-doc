@@ -1,0 +1,150 @@
+EXECUTE PASS 5: ACCURACY VERIFICATION  
+  
+Your objective is to identify factual, logical, and internal consistency issues within the document, while explicitly separating verifiable internal accuracy from external authorities that require human confirmation.  
+  
+This pass is limited to accuracy signals only. It does not assess usability, clarity, fairness, legal enforceability, or compliance.  
+  
+THIS PASS OPERATES IN TWO TIERS:  
+  
+TIER 1: INTERNAL ACCURACY (HIGH CONFIDENCE)  
+You may analyze and flag issues that can be verified using only the content of the document itself.  
+  
+TIER 2: EXTERNAL AUTHORITY REFERENCES (HUMAN REVIEW REQUIRED)  
+You must not verify the correctness or current validity of external legal or factual authorities. Instead, you must identify and catalogue them for human review, clearly indicating uncertainty.  
+  
+ANALYZE THE FOLLOWING DOMAINS:  
+  
+1. INTERNAL FACTUAL CONSISTENCY (TIER 1)  
+Evaluate whether factual statements are consistent across the document.  
+Consider:  
+- Contradictory descriptions of the same obligation or right  
+- Inconsistent party names, roles, or identifiers  
+- Conflicting definitions or factual assertions  
+- Statements that cannot simultaneously be true  
+  
+Surface inconsistencies that create ambiguity or error.  
+  
+2. DEFINED TERM USAGE AND DRIFT (TIER 1)  
+Evaluate whether defined terms are used correctly.  
+Consider:  
+- Capitalized terms used inconsistently with their definitions  
+- Drift between a term’s defined meaning and later usage  
+- Use of defined terms before definition or after deletion  
+  
+Identify misuse that creates factual or logical inconsistency.  
+  
+3. MATHEMATICAL AND LOGICAL ACCURACY (TIER 1)  
+Evaluate internal calculations and logical relationships.  
+Consider:  
+- Arithmetic or percentage errors  
+- Fee calculations that conflict with stated examples  
+- Circular logic or logical impossibilities  
+- Conditions that cannot be satisfied as written  
+  
+Identify errors conclusively determinable from the text.  
+  
+4. TEMPORAL AND DATE LOGIC (TIER 1)  
+Evaluate whether dates, timelines, and temporal relationships are internally coherent.  
+Consider:  
+- Start and end dates  
+- Notice and cure periods  
+- Survival clauses and duration terms  
+- Dependencies between dates and triggering events  
+  
+Identify temporal conflicts or impossible sequences.  
+  
+5. VERSIONING AND OBSOLESCENCE SIGNALS (TIER 1 — HIGH RISK)  
+Evaluate whether the document reflects outdated assumptions.  
+Consider:  
+- References to repealed or replaced regulatory regimes  
+- Obsolete agency names, standards, or programs  
+- Arbitration or procedural rules tied to outdated versions  
+- Clauses drafted for business, technical, or regulatory realities that no longer exist  
+- Time mechanics that reference deleted events or defunct processes  
+  
+Flag signals of copy‑paste drift or temporal mismatch.  
+  
+6. BOILERPLATE AND TEMPLATE DRIFT (TIER 1)  
+Evaluate whether standard clauses align with the apparent transaction.  
+Consider:  
+- Boilerplate assuming a different deal structure  
+- Survival, assignment, or amendment clauses that conflict with bespoke terms  
+- Jurisdiction or enforcement provisions incompatible with governing law  
+- “Transaction‑type ghosts” revealing prior template history  
+  
+Identify internal mismatches suggesting template misuse.  
+  
+7. INTERNAL CROSS‑REFERENCE ACCURACY (TIER 1)  
+Evaluate whether internal references are correct.  
+Consider:  
+- Section, exhibit, or schedule references that do not exist  
+- Incorrect citations to other provisions  
+- References that point to unrelated or contradictory sections  
+  
+Surface verifiable reference errors.  
+  
+8. EXTERNAL LEGAL AND REGULATORY REFERENCES (TIER 2)  
+Identify all references to external authorities, including:  
+- Statutes, regulations, or directives  
+- Case law  
+- Arbitration or procedural rules  
+- Industry standards  
+- External policies incorporated by reference  
+  
+Do NOT assess correctness or currency.  
+Instead:  
+- Identify each reference and its location  
+- Describe the context of reliance  
+- Flag for human verification  
+- Assign LOW confidence due to external dependency  
+  
+9. EXTERNAL FACTUAL ASSERTIONS (TIER 2)  
+Identify factual claims that rely on information outside the document.  
+Examples:  
+- Regulatory requirements  
+- Market or industry facts  
+- Technical capabilities  
+- Third‑party representations  
+  
+Flag these for human review without judging accuracy.  
+  
+RULE IDENTIFICATION (REQUIRED):  
+  
+For each finding, select exactly one rule_id from the list below.  
+The rule_id identifies which accuracy verification check produced the finding.  
+Do not invent new rule identifiers.  
+  
+Allowed rule_id values for Pass 5:  
+  
+TIER 1 – INTERNAL ACCURACY  
+- ACCURACY.INTERNAL_CONTRADICTION  
+- ACCURACY.DEFINED_TERM_DRIFT  
+- ACCURACY.MATHEMATICAL_ERROR  
+- ACCURACY.LOGICAL_IMPOSSIBILITY  
+- ACCURACY.TEMPORAL_INCONSISTENCY  
+- ACCURACY.OBSOLETE_REFERENCE_SIGNAL  
+- ACCURACY.BOILERPLATE_DRIFT  
+- ACCURACY.CROSS_REFERENCE_ERROR  
+  
+TIER 2 – EXTERNAL DEPENDENCIES  
+- ACCURACY.EXTERNAL_LEGAL_REFERENCE  
+- ACCURACY.EXTERNAL_FACTUAL_ASSERTION  
+  
+Each finding must map to the single most relevant rule_id.  
+  
+IMPORTANT CONSTRAINTS:  
+- Do not verify or opine on legal compliance.  
+- Do not assert whether external law is current or applicable.  
+- Do not speculate beyond the document.  
+- Clearly distinguish Tier 1 findings from Tier 2 findings through description and confidence.  
+  
+STOP CONDITION SIGNALS (ADVISORY ONLY):  
+Set metadata.stop_condition = true if:  
+- Internal accuracy failures materially undermine the document’s reliability, OR  
+- Extensive external dependencies require comprehensive human legal review before reliance.  
+  
+OUTPUT REQUIREMENTS:  
+- Emit findings only via the P5Output schema.  
+- Each finding MUST include a rule_id selected from the allowed list.  
+- Use LOW confidence for all Tier 2 findings.  
+- Clearly explain why Tier 2 items require human verification.  

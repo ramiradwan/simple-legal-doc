@@ -1,4 +1,4 @@
-from typing import List, Optional  
+from typing import List, Optional, Literal  
   
 from pydantic import BaseModel, Field, ConfigDict  
   
@@ -7,9 +7,51 @@ from auditor.app.schemas.findings import ConfidenceLevel
   
   
 # ----------------------------------------------------------------------  
+# Token usage diagnostics (non-authoritative)  
+# ----------------------------------------------------------------------  
+class TokenMetrics(BaseModel):  
+    """  
+    Non-authoritative token usage metrics for a semantic audit pass.  
+  
+    IMPORTANT:  
+    - Diagnostic only  
+    - MUST NOT gate execution  
+    - MUST NOT affect audit authority  
+    """  
+  
+    prompt_tokens: int = Field(  
+        ...,  
+        ge=0,  
+        description="Number of tokens used for the prompt",  
+    )  
+  
+    completion_tokens: int = Field(  
+        ...,  
+        ge=0,  
+        description="Number of tokens generated in the completion",  
+    )  
+  
+    total_tokens: Optional[int] = Field(  
+        None,  
+        ge=0,  
+        description="Total tokens consumed (prompt + completion)",  
+    )  
+  
+    cached_tokens: Optional[int] = Field(  
+        None,  
+        ge=0,  
+        description="Number of prompt tokens served from cache",  
+    )  
+  
+    model_config = ConfigDict(  
+        frozen=True,  
+        extra="forbid",  
+    )  
+  
+  
+# ----------------------------------------------------------------------  
 # Non-authoritative execution diagnostics  
 # ----------------------------------------------------------------------  
-  
 class SemanticExecutionError(BaseModel):  
     """  
     Non-authoritative technical diagnostics for a semantic audit pass.  
@@ -49,7 +91,6 @@ class SemanticExecutionError(BaseModel):
 # ----------------------------------------------------------------------  
 # Pass-level Result  
 # ----------------------------------------------------------------------  
-  
 class SemanticAuditPassResult(BaseModel):  
     """  
     Internal result of a single semantic audit pass.  
@@ -79,14 +120,34 @@ class SemanticAuditPassResult(BaseModel):
     )  
   
     # ------------------------------------------------------------------  
-    # Technical execution diagnostics 
+    # Pass-specific optional advisory outputs  
     # ------------------------------------------------------------------  
+    delivery_recommendation: Optional[  
+        Literal["READY", "REVIEW_REQUIRED", "DO_NOT_DELIVER"]  
+    ] = Field(  
+        None,  
+        description=(  
+            "Optional delivery readiness recommendation "  
+            "(present only for Pass 8)."  
+        ),  
+    )  
   
+    # ------------------------------------------------------------------  
+    # Technical execution diagnostics  
+    # ------------------------------------------------------------------  
     execution_error: Optional[SemanticExecutionError] = Field(  
         None,  
         description=(  
             "Optional technical execution diagnostics "  
             "(non-authoritative, non-gating)."  
+        ),  
+    )  
+  
+    token_metrics: Optional[TokenMetrics] = Field(  
+        None,  
+        description=(  
+            "Optional token usage metrics for this pass execution "  
+            "(diagnostic only, non-gating)."  
         ),  
     )  
   
@@ -109,7 +170,6 @@ class SemanticAuditPassResult(BaseModel):
 # ----------------------------------------------------------------------  
 # Protocol-level Result  
 # ----------------------------------------------------------------------  
-  
 class SemanticAuditResult(BaseModel):  
     """  
     Aggregate result of executing a semantic audit protocol.  

@@ -1,3 +1,5 @@
+import pytest  
+  
 from auditor.app.coordinator.coordinator import AuditorCoordinator  
 from auditor.app.config import AuditorConfig  
 from auditor.app.schemas.verification_report import (  
@@ -6,8 +8,10 @@ from auditor.app.schemas.verification_report import (
 )  
 from auditor.app.schemas.findings import Severity, FindingSource  
   
+pytestmark = pytest.mark.anyio  
   
-def test_ldvp_is_not_executed_when_aia_fails():  
+  
+async def test_ldvp_is_not_executed_when_aia_fails():  
     """  
     LDVP must never be executed if the Artifact Integrity Audit fails.  
     """  
@@ -20,7 +24,7 @@ def test_ldvp_is_not_executed_when_aia_fails():
   
     coordinator = AuditorCoordinator(config)  
   
-    report = coordinator.run_audit(  
+    report = await coordinator.run_audit(  
         pdf_bytes=b"this is not a pdf",  
         audit_id="test-aia-failure-gates-ldvp",  
     )  

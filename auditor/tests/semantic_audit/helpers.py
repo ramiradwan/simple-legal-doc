@@ -27,7 +27,7 @@ class NoOpSemanticAuditPass:
         self.name = f"No-op {pass_id}"  
         self.source = FindingSource.SEMANTIC_AUDIT  
   
-    def run(  
+    async def run(  
         self,  
         context: SemanticAuditContext,  
     ) -> SemanticAuditPassResult:  

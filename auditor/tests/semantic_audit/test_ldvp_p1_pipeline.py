@@ -9,6 +9,8 @@ Verifies that:
   
 from __future__ import annotations  
   
+import pytest  
+  
 from auditor.app.coordinator.coordinator import AuditorCoordinator  
 from auditor.app.coordinator.artifact_integrity_audit import ArtifactIntegrityAudit  
 from auditor.app.schemas.verification_report import AuditStatus  
@@ -23,6 +25,8 @@ from auditor.tests.semantic_audit.helpers import (
     build_ldvp_pipeline_with_p1,  
 )  
   
+pytestmark = pytest.mark.anyio  
+  
   
 # ----------------------------------------------------------------------  
 # Test doubles  
@@ -35,9 +39,8 @@ class FakeArtifactIntegrityAudit(ArtifactIntegrityAudit):
   
     def run(self, pdf_bytes: bytes):  
         from auditor.app.schemas.artifact_integrity import ArtifactIntegrityResult  
-    
+  
         text = "This is a test legal document.\n\nSigned by Test."  
-    
         return ArtifactIntegrityResult(  
             passed=True,  
             checks_executed=["fake_aia"],  
@@ -51,7 +54,7 @@ class FakeArtifactIntegrityAudit(ArtifactIntegrityAudit):
 # ----------------------------------------------------------------------  
 # Test  
 # ----------------------------------------------------------------------  
-def test_ldvp_p1_timeout_does_not_fail_audit():  
+async def test_ldvp_p1_timeout_does_not_fail_audit():  
     executor = MockLLMExecutor(mode="timeout")  
     prompt = make_test_prompt(pass_id="P1")  
   
@@ -69,13 +72,25 @@ def test_ldvp_p1_timeout_does_not_fail_audit():
         seal_trust_verifier=None,  
     )  
   
-    report = coordinator.run_audit(  
+    report = await coordinator.run_audit(  
         pdf_bytes=b"%PDF-FAKE",  
         audit_id="audit-test-001",  
     )  
   
     assert report.status == AuditStatus.PASS  
     assert report.semantic_audit.executed is True  
+
+    # --------------------------------------------------------------  
+    # Token metrics are preserved on execution failure (diagnostic)  
+    # --------------------------------------------------------------  
+    p1_result = next(  
+        p for p in report.semantic_audit.pass_results  
+        if p.pass_id == "P1"  
+    )  
+  
+    assert p1_result.token_metrics is not None  
+    assert p1_result.token_metrics.prompt_tokens >= 0  
+    assert p1_result.token_metrics.completion_tokens >= 0  
   
     semantic_findings = [  
         f for f in report.findings  
@@ -84,5 +99,6 @@ def test_ldvp_p1_timeout_does_not_fail_audit():
   
     assert len(semantic_findings) == 1  
     finding = semantic_findings[0]  
+  
     assert "execution" in finding.finding_id.lower()  
     assert "timeout" in finding.description.lower()  

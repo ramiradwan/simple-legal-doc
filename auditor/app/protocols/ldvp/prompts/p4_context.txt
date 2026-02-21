@@ -1,0 +1,138 @@
+EXECUTE PASS 4: STRUCTURAL INTEGRITY CHECK  
+  
+Your objective is to evaluate whether the document’s internal structure is mechanically sound, internally consistent, and navigable as a legal instrument.  
+  
+This pass examines the document’s architecture only. It does not assess factual accuracy, clarity, fairness, legal enforceability, or risk.  
+  
+Structural defects must be identified before accuracy or risk analysis, because broken references, missing components, or unstable dependencies undermine all downstream verification.  
+  
+ANALYZE THE FOLLOWING DOMAINS:  
+  
+1. OVERALL DOCUMENT ORGANIZATION  
+Evaluate whether the document is organized in a coherent and logical structure.  
+Consider:  
+- Logical sequencing of sections and subsections  
+- Consistency of hierarchical structure  
+- Accuracy and descriptiveness of section headings  
+- Alignment between headings and the content they introduce  
+  
+Surface issues where organization impairs navigation or interpretation.  
+  
+2. CROSS-REFERENCE INTEGRITY  
+Evaluate the accuracy and completeness of internal references.  
+Consider:  
+- Section and subsection references  
+- Exhibit, schedule, or appendix citations  
+- Forward and backward references  
+- Orphaned or circular references  
+  
+Identify broken, missing, or ambiguous references that prevent reliable navigation.  
+  
+3. NUMBERING AND LABELING CONSISTENCY  
+Evaluate whether numbering and labeling systems are consistent.  
+Consider:  
+- Sequential numbering of sections and subsections  
+- Duplicate, skipped, or inconsistent numbering  
+- Consistency in exhibit and schedule labels  
+- Formatting inconsistencies affecting citation clarity  
+  
+Surface defects that create confusion or ambiguity.  
+  
+4. DEFINITION MANAGEMENT AND TERM CONSISTENCY  
+Evaluate the document’s definition structure.  
+Consider:  
+- Capitalized terms that are never defined  
+- Defined terms that are never used  
+- Conflicting or overlapping definitions  
+- Structural drift between a term’s definition and its usage  
+  
+Identify definition issues that impair structural coherence.  
+  
+5. EXTERNAL REFERENCE FRAGILITY (HIGH-RISK STRUCTURAL SIGNALS)  
+  
+A. URL AND HYPERLINK DEPENDENCIES  
+Evaluate reliance on external links.  
+Consider:  
+- Whether core obligations or definitions depend on external URLs  
+- Accessibility of linked content to intended users  
+- Whether links appear stable or subject to unilateral change  
+- Consequences if external content becomes unavailable or changes  
+  
+Surface concerns where external links undermine document stability.  
+  
+B. INCORPORATION BY REFERENCE  
+Evaluate structural incorporation of external documents.  
+Consider:  
+- Whether incorporation is explicit and unambiguous  
+- Accessibility of incorporated documents  
+- Presence or absence of version identifiers  
+- Risk of unilateral modification through incorporated materials  
+- Circular or cascading incorporation  
+  
+Identify structural risks created by unclear or unstable incorporation.  
+  
+C. DYNAMIC OR SELF-UPDATING REFERENCES  
+Evaluate references to materials that may change over time.  
+Consider:  
+- Use of terms like “current,” “as updated,” or “as amended”  
+- Whether such references grant unilateral change power  
+- Whether notice or consent mechanisms are structurally specified  
+  
+Surface issues where document meaning may change outside the document itself.  
+  
+6. COMPLETENESS OF REFERENCED PARTS  
+Evaluate whether all referenced components are present.  
+Consider:  
+- Missing exhibits, schedules, or appendices  
+- Referenced sections that do not exist  
+- Incomplete signature blocks  
+- Missing identification of required parties  
+  
+Surface missing structural elements that prevent full interpretation.  
+  
+7. INTERNAL STRUCTURAL CONSISTENCY  
+Evaluate whether different sections align structurally.  
+Consider:  
+- Conflicting procedural frameworks  
+- Inconsistent structural assumptions  
+- Provisions that presuppose missing sections or definitions  
+  
+Identify contradictions that impair structural coherence, even if content is intelligible in isolation.  
+  
+RULE IDENTIFICATION (REQUIRED):  
+  
+For each finding, select exactly one rule_id from the list below.  
+The rule_id identifies which structural integrity check produced the finding.  
+Do not invent new rule identifiers.  
+  
+Allowed rule_id values for Pass 4:  
+- STRUCTURE.ORGANIZATION_INCOHERENT  
+- STRUCTURE.CROSS_REFERENCE_BROKEN  
+- STRUCTURE.NUMBERING_INCONSISTENT  
+- STRUCTURE.DEFINITION_INCONSISTENT  
+- STRUCTURE.UNDEFINED_TERM  
+- STRUCTURE.UNUSED_DEFINITION  
+- STRUCTURE.EXTERNAL_LINK_DEPENDENCY  
+- STRUCTURE.INCORPORATION_BY_REFERENCE_RISK  
+- STRUCTURE.DYNAMIC_REFERENCE_RISK  
+- COMPLETENESS.MISSING_COMPONENT  
+- STRUCTURE.INTERNAL_CONTRADICTION  
+  
+Each finding must map to the single most relevant rule_id.  
+  
+IMPORTANT CONSTRAINTS:  
+- Do not assess factual accuracy, legal compliance, or enforceability.  
+- Do not assess usability or linguistic clarity.  
+- Do not propose fixes or restructuring plans.  
+- Do not weigh risk or fairness.  
+  
+STOP CONDITION SIGNALS (ADVISORY ONLY):  
+Set metadata.stop_condition = true if:  
+- Structural defects prevent reliable navigation or interpretation, OR  
+- Critical external dependencies or missing components undermine structural integrity.  
+  
+OUTPUT REQUIREMENTS:  
+- Emit findings only via the P4Output schema.  
+- Each finding MUST include a rule_id selected from the allowed list.  
+- Clearly identify the structural defect and its location.  
+- Use confidence levels reflecting certainty based on document inspection.  

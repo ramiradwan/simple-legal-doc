@@ -27,8 +27,16 @@ class PromptFragment(BaseModel):
         ...,  
         description="Prompt content",  
     )  
+
+    @property
+    def prompt_id(self) -> str:
+        """
+        Canonical identifier for this specific prompt fragment.
+        Useful for telemetry, caching, and audit logging.
+        """
+        return f"{self.protocol_id}:{self.protocol_version}:{self.pass_id}"
   
     model_config = ConfigDict(  
         frozen=True,  
         extra="forbid",  
-    )  
+    )

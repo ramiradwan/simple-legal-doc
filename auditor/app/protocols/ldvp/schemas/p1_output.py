@@ -21,10 +21,10 @@ from auditor.app.schemas.findings import (
     FindingCategory,  
 )  
   
-  
 # ----------------------------------------------------------------------  
 # Optional structured metadata (CLOSED OBJECT)  
 # ----------------------------------------------------------------------  
+  
   
 class P1FindingMetadata(BaseModel):  
     """  
@@ -34,8 +34,15 @@ class P1FindingMetadata(BaseModel):
     and structured-output compatibility.  
     """  
   
-    # Reserved for future, explicitly-versioned fields  
-    # (intentionally empty for now)  
+    stop_condition: Optional[bool] = Field(  
+        None,  
+        description=(  
+            "If true, indicates a fundamental contextual failure "  
+            "that prevents reliable downstream semantic analysis "  
+            "(e.g. document type, category, or jurisdiction "  
+            "cannot be determined with reasonable confidence)."  
+        ),  
+    )  
   
     model_config = ConfigDict(  
         extra="forbid",  
@@ -46,6 +53,7 @@ class P1FindingMetadata(BaseModel):
 # Individual Finding (Pass 1)  
 # ----------------------------------------------------------------------  
   
+  
 class P1Finding(BaseModel):  
     """  
     A single context/classification-related finding.  
@@ -53,6 +61,16 @@ class P1Finding(BaseModel):
     Each finding represents a potential issue, ambiguity, or notable  
     observation about the document's context or classification.  
     """  
+  
+    rule_id: str = Field(  
+        ...,  
+        description=(  
+            "Identifier of the contextual analysis rule that triggered "  
+            "this finding. Must be selected from the enumerated rule set "  
+            "defined in the Pass 1 prompt."  
+        ),  
+        min_length=3,  
+    )  
   
     title: str = Field(  
         ...,  
@@ -101,11 +119,6 @@ class P1Finding(BaseModel):
         description="Optional reference to the relevant section or clause.",  
     )  
   
-    suggested_fix: Optional[str] = Field(  
-        None,  
-        description="Optional advisory suggestion to address the issue.",  
-    )  
-  
     metadata: Optional[P1FindingMetadata] = Field(  
         None,  
         description="Optional structured metadata for tooling or reviewers.",  
@@ -119,6 +132,7 @@ class P1Finding(BaseModel):
 # ----------------------------------------------------------------------  
 # Pass Output  
 # ----------------------------------------------------------------------  
+  
   
 class P1Output(BaseModel):  
     """  

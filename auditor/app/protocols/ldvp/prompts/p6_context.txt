@@ -1,0 +1,128 @@
+EXECUTE PASS 6: COMPLETENESS & GAP ANALYSIS  
+  
+Your objective is to identify material omissions, unaddressed scenarios, and under-specified mechanisms that may impair the document’s practical operability.  
+  
+This pass focuses on silence and gaps, not clarity, accuracy, structure, fairness, or legal enforceability.  
+  
+ANALYZE THE FOLLOWING DOMAINS:  
+  
+1. MISSING ALLOCATIONS OF RESPONSIBILITY  
+Evaluate whether obligations, rights, and processes clearly assign responsibility.  
+Consider:  
+- Obligations without a clearly identified responsible party  
+- Shared responsibilities lacking coordination or decision authority  
+- Processes described without ownership or control  
+  
+Identify gaps where accountability is unclear or assumed.  
+  
+2. OBLIGATIONS WITHOUT REMEDIES OR CONSEQUENCES  
+Evaluate whether obligations are paired with consequences.  
+Consider:  
+- Rights without enforcement mechanisms  
+- Breaches without remedies or escalation paths  
+- Duties that exist without any consequence for non-performance  
+  
+Surface gaps where obligations exist but lack operational effect.  
+  
+3. MISSING INTERACTION AND PRIORITY RULES  
+Evaluate how provisions interact.  
+Consider:  
+- Clauses that may conflict without a resolution mechanism  
+- Absence of order-of-precedence rules  
+- Silence about which provision controls in edge cases  
+  
+Identify gaps where the document provides no way to resolve internal collisions.  
+  
+4. UNADDRESSED TRANSITIONS AND EDGE CASES  
+Evaluate whether foreseeable transitions are covered.  
+Consider:  
+- Onboarding and offboarding  
+- Suspension, pause, or interruption states  
+- Partial performance or failure scenarios  
+- Change-of-control, assignment, or succession events  
+  
+Use scenario-style reasoning (“What happens if X occurs?”) to identify silence.  
+  
+5. PROCEDURAL INCOMPLETENESS  
+Evaluate whether described procedures are executable.  
+Consider:  
+- Required approvals without identifying who approves  
+- Required notices without method, timing, or recipient  
+- Review processes without timelines  
+- Conditions without clear satisfaction criteria  
+  
+Surface procedures that cannot be followed as written.  
+  
+6. UNDEFINED OR ORPHANED CONCEPTS  
+Evaluate whether important concepts are fully specified.  
+Consider:  
+- Terms or concepts used but never defined  
+- Provisions that begin but do not fully specify outcomes  
+- Assumptions implicit in the text but never stated  
+  
+Identify gaps where meaning or operation is incomplete.  
+  
+7. INCORPORATED DOCUMENT DEPENDENCY LOAD  
+For documents incorporating other materials by reference, evaluate cumulative impact.  
+Consider:  
+- Number and scope of incorporated documents  
+- Accessibility to the intended audience  
+- Version control and changeability over time  
+- Whether incorporated materials can be modified unilaterally  
+- Whether conflicts between documents can be resolved  
+  
+Surface gaps where incorporation creates hidden complexity or uncertainty.  
+  
+8. LIFECYCLE ENDPOINTS AND AFTEREFFECTS  
+Evaluate whether document endpoints are complete.  
+Consider:  
+- Termination or expiration without defined effects  
+- Survival of obligations not addressed  
+- Data, asset, or work-product handling after termination  
+  
+Identify incomplete lifecycle treatment.  
+  
+9. SILENCE THAT CREATES ASYMMETRIC RISK  
+Evaluate whether omissions disproportionately benefit one party.  
+Consider:  
+- Unilateral discretion enabled by silence  
+- Missing protections for weaker parties  
+- Absence of mutuality in critical mechanisms  
+  
+Surface gaps that create hidden imbalance through omission alone.  
+  
+RULE IDENTIFICATION (REQUIRED):  
+  
+For each finding, select exactly one rule_id from the list below.  
+The rule_id identifies which completeness or gap analysis check produced the finding.  
+Do not invent new rule identifiers.  
+  
+Allowed rule_id values for Pass 6:  
+- COMPLETENESS.MISSING_RESPONSIBILITY  
+- COMPLETENESS.NO_REMEDY_OR_CONSEQUENCE  
+- COMPLETENESS.NO_PRIORITY_RULE  
+- COMPLETENESS.UNADDRESSED_EDGE_CASE  
+- COMPLETENESS.PROCEDURE_NOT_EXECUTABLE  
+- COMPLETENESS.UNDEFINED_CONCEPT  
+- COMPLETENESS.INCORPORATION_COMPLEXITY  
+- COMPLETENESS.INCOMPLETE_LIFECYCLE  
+- COMPLETENESS.ASYMMETRIC_SILENCE  
+  
+Each finding must map to the single most relevant rule_id.  
+  
+IMPORTANT CONSTRAINTS:  
+- Do not assess fairness, legality, or compliance.  
+- Do not infer intent beyond the text.  
+- Do not propose missing clauses or fixes.  
+- Do not repeat clarity or structural issues addressed in earlier passes.  
+  
+STOP CONDITION SIGNALS (ADVISORY ONLY):  
+Set metadata.stop_condition = true if:  
+- Critical gaps render the document operationally unworkable, OR  
+- Silence creates substantial uncertainty that prevents reasonable reliance without expert intervention.  
+  
+OUTPUT REQUIREMENTS:  
+- Emit findings only via the P6Output schema.  
+- Each finding MUST include a rule_id selected from the allowed list.  
+- Clearly describe the missing element and its operational impact.  
+- Use confidence levels reflecting certainty based on the document content.  

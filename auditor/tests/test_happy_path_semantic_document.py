@@ -1,3 +1,5 @@
+import pytest  
+  
 from auditor.app.coordinator.coordinator import AuditorCoordinator  
 from auditor.app.config import AuditorConfig  
 from auditor.app.schemas.verification_report import (  
@@ -8,8 +10,10 @@ from auditor.app.schemas.findings import FindingSource, Severity
   
 from auditor.tests.fixtures.pdf_factory import semantic_bound_pdf  
   
+pytestmark = pytest.mark.anyio  
   
-def test_happy_path_semantic_document_passes_full_audit():  
+  
+async def test_happy_path_semantic_document_passes_full_audit():  
     """  
     Happy-path contract test.  
   
@@ -26,7 +30,7 @@ def test_happy_path_semantic_document_passes_full_audit():
     coordinator = AuditorCoordinator(config)  
     pdf_bytes = semantic_bound_pdf()  
   
-    report = coordinator.run_audit(  
+    report = await coordinator.run_audit(  
         pdf_bytes=pdf_bytes,  
         audit_id="test-happy-path-semantic",  
     )  
