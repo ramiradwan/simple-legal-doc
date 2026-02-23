@@ -1,5 +1,3 @@
-version: "3.8"  
-  
 services:  
   backend:  
     build:  
@@ -9,22 +7,12 @@ services:
     ports:  
       - "8000:8000"  
     env_file:  
-      - .env.trusted  
+      - .env.backend  
     environment:  
       - TEMPLATE_DIR=/app/app/templates  
-  
-      # --------------------------------------------------  
-      # Signing configuration  
-      # (SIGNING_BACKEND is provided via .env.trusted)  
-      # --------------------------------------------------  
-      - SIGNING_HTTP_URL=http://signer:8080/sign-archival  
-  
-      # Local dev signing (SIGNING_BACKEND=local)  
       - SIGNING_P12_PATH=/run/dev-cert/dev-signing.p12  
       - SIGNING_P12_PASSWORD=dev-only  
-  
     volumes:  
-      # DEV ONLY: hot reload templates  
       - ./backend/app/templates:/app/app/templates  
     restart: unless-stopped  
   
@@ -47,15 +35,22 @@ services:
       context: ./signer  
       dockerfile: Dockerfile  
     image: simple-legal-doc-signer  
-    ports:  
-      - "8081:8080"  
-    environment:  
-      - AZURE_TRUSTED_SIGNING_ACCOUNT=${AZURE_TRUSTED_SIGNING_ACCOUNT}  
-      - AZURE_TRUSTED_SIGNING_PROFILE=${AZURE_TRUSTED_SIGNING_PROFILE}  
-      - AZURE_CLIENT_ID=${AZURE_CLIENT_ID}  
-      - AZURE_TENANT_ID=${AZURE_TENANT_ID}  
-      - AZURE_CLIENT_SECRET=${AZURE_CLIENT_SECRET}  
+    env_file:  
+      - .env.signer  
     restart: unless-stopped  
+    read_only: true  
+    tmpfs:  
+      - /tmp  
+    deploy:  
+      resources:  
+        limits:  
+          memory: 128M  
+    healthcheck:  
+      test: ["CMD", "curl", "-f", "http://localhost:8080/healthz"]  
+      interval: 10s  
+      timeout: 5s  
+      retries: 3  
+      start_period: 5s  
   
   auditor:  
     build:  
@@ -63,9 +58,10 @@ services:
       dockerfile: auditor/Dockerfile  
     image: simple-legal-doc-auditor  
     env_file:  
-      - .env.trusted  
+      - .env.auditor  
     volumes:  
       - ./auditor:/app/auditor  
     working_dir: /app  
     ports:  
       - "8001:8000"  
+    restart: unless-stopped  

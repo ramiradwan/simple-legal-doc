@@ -1,49 +1,93 @@
-# ============================  
-# Build stage (Native AOT)  
-# ============================  
-FROM mcr.microsoft.com/dotnet/sdk:8.0 AS build  
+# ============================================================================  
+# Signer (Seal‑Engine) — Cryptographic Sealing Sidecar  
+# ============================================================================  
   
-WORKDIR /src  
   
-# Copy project file first for layer caching  
-COPY SealEngine.csproj ./  
+# ============================================================================  
+# Stage 1: Builder (Deterministic Dependency Resolution)  
+# ============================================================================  
+FROM python:3.13-slim AS builder  
   
-# Restore WITH runtime identifier (critical for AOT correctness)  
-RUN dotnet restore \  
-    -r linux-x64  
+# ---------------------------------------------------------------------------  
+# uv bootstrap (pinned, modern)  
+# ---------------------------------------------------------------------------  
+COPY --from=ghcr.io/astral-sh/uv:0.10.4 /uv /uvx /bin/  
   
-# Copy the rest of the source  
-COPY . .  
+ENV UV_COMPILE_BYTECODE=1  
   
-# Publish (AOT settings come from csproj)  
-RUN dotnet publish \  
-    -c Release \  
-    -r linux-x64 \  
-    --self-contained true \  
-    -o /out \  
-    -p:StripSymbols=true \  
-    -p:OptimizationPreference=Speed  
-  
-# ============================  
-# Runtime stage (distroless)  
-# ============================  
-FROM mcr.microsoft.com/dotnet/runtime-deps:8.0-azurelinux3.0-distroless  
-  
+# ---------------------------------------------------------------------------  
+# Working directory  
+# ---------------------------------------------------------------------------  
 WORKDIR /app  
   
-# Explicit runtime invariants  
-ENV ASPNETCORE_URLS=http://0.0.0.0:8080 \  
-    DOTNET_SYSTEM_GLOBALIZATION_INVARIANT=true \  
-    DOTNET_EnableDiagnostics=0  
+# ---------------------------------------------------------------------------  
+# System dependencies  
+# ---------------------------------------------------------------------------  
+RUN apt-get update && apt-get install -y --no-install-recommends \  
+    ca-certificates \  
+ && rm -rf /var/lib/apt/lists/*  
   
-# Copy the native binary  
-COPY --from=build /out/SealEngine /app/SealEngine  
+# ---------------------------------------------------------------------------  
+# Python dependencies (locked, reproducible)  
+# ---------------------------------------------------------------------------  
+# (paths are relative to signer/ build context)  
+COPY pyproject.toml uv.lock ./  
   
-# Service port  
+RUN uv sync --no-dev --frozen  
+  
+  
+# ============================================================================  
+# Stage 2: Runtime (Minimal & Secure)  
+# ============================================================================  
+FROM python:3.13-slim  
+  
+# ---------------------------------------------------------------------------  
+# Environment  
+# ---------------------------------------------------------------------------  
+ENV PYTHONUNBUFFERED=1 \  
+    PYTHONDONTWRITEBYTECODE=1 \  
+    LANG=C.UTF-8 \  
+    LC_ALL=C.UTF-8 \  
+    PYTHONPATH=/app \  
+    PATH="/app/.venv/bin:$PATH"  
+  
+# ---------------------------------------------------------------------------  
+# Working directory  
+# ---------------------------------------------------------------------------  
+WORKDIR /app  
+  
+# ---------------------------------------------------------------------------  
+# System dependencies  
+# ---------------------------------------------------------------------------  
+RUN apt-get update && apt-get install -y --no-install-recommends \  
+    ca-certificates \  
+ && apt-get clean \  
+ && rm -rf /var/lib/apt/lists/*  
+  
+# ---------------------------------------------------------------------------  
+# Python virtual environment  
+# ---------------------------------------------------------------------------  
+COPY --from=builder /app/.venv /app/.venv  
+  
+# ---------------------------------------------------------------------------  
+# Runtime user (non‑root)  
+# ---------------------------------------------------------------------------  
+RUN useradd --create-home --shell /usr/sbin/nologin appuser  
+  
+# ---------------------------------------------------------------------------  
+# Application code  
+# ---------------------------------------------------------------------------  
+# Copy the signer package (context root)  
+COPY --chown=appuser:appuser . /app/signer  
+  
+USER appuser  
+  
+# ---------------------------------------------------------------------------  
+# Network  
+# ---------------------------------------------------------------------------  
 EXPOSE 8080  
   
-# Distroless non-root user  
-USER nonroot  
-  
-# Native AOT binary — no dotnet host  
-ENTRYPOINT ["/app/SealEngine"]  
+# ---------------------------------------------------------------------------  
+# Entrypoint  
+# ---------------------------------------------------------------------------  
+CMD ["uvicorn", "signer.app.main:app", "--host", "0.0.0.0", "--port", "8080"]  

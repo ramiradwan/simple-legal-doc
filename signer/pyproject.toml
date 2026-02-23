@@ -1,0 +1,107 @@
+[project]  
+name = "signer"  
+version = "1.2.0"  
+description = "High-assurance cryptographic sealing sidecar using Azure Artifact Signing"  
+readme = "README.md"  
+requires-python = ">=3.13,<3.14"  
+license = { text = "Proprietary" }  
+  
+authors = [  
+  { name = "Seal-Engine Maintainers" }  
+]  
+  
+classifiers = [  
+  "Programming Language :: Python :: 3",  
+  "Programming Language :: Python :: 3.13",  
+  "Framework :: FastAPI",  
+  "Intended Audience :: Developers",  
+  "Topic :: Security :: Cryptography",  
+  "Topic :: Office/Business :: Financial",  
+  "Operating System :: POSIX :: Linux",  
+]  
+  
+# ---------------------------------------------------------------------------  
+# Runtime Dependencies (production only)  
+# ---------------------------------------------------------------------------  
+  
+dependencies = [  
+  # Web framework & ASGI server  
+  "fastapi>=0.129.0,<0.130.0",  
+  "uvicorn[standard]>=0.29,<0.31",  
+  
+  # High-performance JSON serialization  
+  "orjson>=3.9,<4.0",  
+  
+  # Async HTTP client (Azure data plane, HTTP/2)  
+  "httpx[http2]>=0.27,<1.0",  
+  
+  # Async HTTP client (pyHanko timestamps & revocation fetching)  
+  "aiohttp>=3.9,<4.0",  
+  
+  # Azure identity and auth primitives  
+  "azure-identity>=1.16,<2.0",  
+  "azure-core>=1.30,<2.0",  
+  
+  # Cryptographic PDF signing (PAdES, LTV) — HARD PINNED  
+  "pyhanko>=0.32.1,<0.34",  
+  "pyhanko-certvalidator>=0.28.1,<0.30",  
+  "asn1crypto>=1.5,<2.0",  
+  
+  # Retry / resilience  
+  "tenacity>=8.2,<9.0",  
+  
+  # Configuration & validation  
+  "pydantic>=2.7,<3.0",  
+  "pydantic-settings>=2.2,<3.0",  
+
+   # Multipart form parsing (FastAPI file uploads)  
+  "python-multipart>=0.0.9,<1.0",  
+]  
+  
+# ---------------------------------------------------------------------------  
+# Optional Dependency Groups (never installed in container)  
+# ---------------------------------------------------------------------------  
+  
+[project.optional-dependencies]  
+dev = [  
+  "pytest>=8.1,<9.0",  
+  "pytest-asyncio>=0.23,<1.0",  
+  "ruff>=0.3,<1.0",  
+  "mypy>=1.9,<2.0",  
+]  
+  
+# ---------------------------------------------------------------------------  
+# Entry Points  
+# ---------------------------------------------------------------------------  
+  
+[project.scripts]  
+signer = "signer.main:app"  
+  
+# ---------------------------------------------------------------------------  
+# Build System (PEP 517 / 518)  
+# ---------------------------------------------------------------------------  
+  
+[build-system]  
+requires = ["setuptools>=69.0"]  
+build-backend = "setuptools.build_meta"  
+  
+# ---------------------------------------------------------------------------  
+# Tooling Configuration (dev only)  
+# ---------------------------------------------------------------------------  
+  
+[tool.ruff]  
+target-version = "py313"  
+line-length = 88  
+select = ["E", "F", "W", "I"]  
+ignore = ["E501"]  
+  
+[tool.mypy]  
+python_version = "3.13"  
+strict = true  
+warn_unused_configs = true  
+disallow_untyped_defs = true  
+no_implicit_optional = true  
+  
+[tool.pytest.ini_options]  
+asyncio_mode = "strict"  
+testpaths = ["tests"]  

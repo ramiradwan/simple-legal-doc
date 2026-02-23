@@ -1,180 +1,162 @@
-# Seal‑Engine (Signer Sidecar)  
+# Seal‑Engine (Signer Sidecar) v1.2  
   
-**Seal‑Engine** is a minimal, stateless **signer sidecar** for the  
-`simple-legal-doc` document generation system.  
+> High‑assurance cryptographic sealing microservice for PDF/A‑3b artifacts using Azure Artifact Signing.  
   
-It performs **cryptographic sealing only**, applying archival‑grade  
-**PAdES‑B‑LT signatures** to finalized PDF/A‑3b documents and returning  
-a signed PDF artifact suitable for long‑term retention and independent  
-verification.  
-  
-This implementation delegates signing operations to  
-**Azure Trusted Signing** (cloud‑backed HSM).  
+The **Seal‑Engine** is a zero‑trust, production‑hardened internal signer sidecar that applies ETSI EN 319 142‑1 behaviorally conformant **PAdES Baseline‑LT** digital signatures to finalized, content‑complete PDF artifacts. All asymmetric cryptographic signing operations are delegated to **Azure Artifact Signing**, backed by Azure‑managed **FIPS 140‑2 Level 3 / FIPS 140‑3** Hardware Security Modules (HSMs). The sidecar locally orchestrates incremental PDF structural updates, CMS container assembly, RFC 3161 timestamping, and Long‑Term Validation (LTV) material, while never handling private key material or document semantics.  
   
 ---  
   
-## Purpose & Scope  
+## Intended Deployment Model
   
-This service exists solely to perform **document sealing**.  
+> [!NOTE]
+> **The Seal‑Engine is an internal service.**  
   
-It is intentionally **content‑agnostic**, **policy‑restricted**, and  
-isolated from document construction.  
-  
-### What This Service DOES  
-  
-✅ Accepts a finalized PDF/A‑3b document    
-✅ Applies an **incremental (append‑only) PAdES‑B‑LT** signature    
-✅ Delegates cryptographic operations to Azure Trusted Signing    
-✅ Embeds certificate chain, revocation data, and timestamp    
-✅ Returns the signed PDF bytes    
-  
-### What This Service DOES NOT Do  
-  
-❌ Render documents    
-❌ Canonicalize or hash semantic payloads    
-❌ Modify visual content    
-❌ Normalize PDF/A    
-❌ Interpret document meaning    
-❌ Store keys, certificates, or documents    
-  
-All document semantics, layout, and archival normalization are handled  
-**upstream** by the Python document engine.  
+It is designed to be reachable **only by the Document Engine (backend)** within a trusted network boundary such as a Docker network, Kubernetes namespace, or service mesh. It must not be exposed directly to end users, browsers, public networks, or untrusted services. Authentication and access control are enforced at the infrastructure layer rather than in application code.  
   
 ---  
   
-## Trust Model  
+## At a Glance  
   
-- Private keys never leave **Azure‑managed HSMs**  
-- The signer operates only on a finalized PDF artifact  
-- Certificates are managed, rotated, and validated by Microsoft  
-- Trust anchors are included in:  
-  - Microsoft Root Certificate Program  
-  - Adobe Approved Trust List (AATL)  
-  
-This enforces a strict trust boundary between **document construction**  
-and **document sealing**.  
-  
----  
-  
-## Signature Profile  
-  
-| Property | Value |  
-|--------|------|  
-| Document Format | PDF/A‑3b |  
-| Signature Standard | PAdES (PDF Advanced Electronic Signatures) |  
-| Baseline Level | **B‑LT (Long‑Term Validation)** |  
-| Hash Algorithm | SHA‑256 |  
-| Timestamp Authority | Microsoft TSA (`timestamp.acs.microsoft.com`) |  
-| Update Mode | Incremental (append‑only) |  
-  
-The resulting signatures remain verifiable **offline**, long after  
-certificate expiration.  
+- Signature standard: PAdES Baseline‑LT (ETSI EN 319 142‑1, behaviorally conformant)  
+- Signature algorithm: **RSA (PKCS#1 v1.5)** via Azure Artifact Signing  
+- Hash algorithms: SHA‑256 / SHA‑384 / SHA‑512  
+- PDF profile: PDF/A‑3b (incremental updates preserved)  
+- Key management: Azure Artifact Signing (HSM‑backed, Azure‑managed)  
+- Trust model: Zero‑trust, key‑isolated signer sidecar  
+- Access model: Internal service (Document Engine → Signer only)  
+- Runtime: FastAPI microservice  
+- Language / libraries: Python, pyHanko  
   
 ---  
   
-## API Contract  
+## Architecture Overview  
   
-### Endpoint  
+The Seal‑Engine operates as an isolated signer sidecar responsible for incremental PDF structural manipulation, CMS container assembly, timestamp orchestration, and validation‑material construction, while delegating all raw asymmetric signing operations to Azure‑managed HSM‑backed infrastructure. The service is intentionally semantic‑agnostic and operates exclusively on byte‑level document representations.  
   
+### The sidecar performs  
+  
+- Incremental PDF structural updates (`/ByteRange`, XREF tables, trailers)  
+- CMS container assembly for PAdES signatures  
+- Local message digest computation (never raw document signing)  
+- Delegation of RSA signing operations to Azure Artifact Signing  
+- RFC 3161 timestamp acquisition  
+- Construction of Long‑Term Validation (LTV) material and DSS entries  
+  
+### The sidecar does not  
+  
+- Expose a public or user‑facing API  
+- Access or handle private key material  
+- Render, interpret, or extract document content  
+- Modify or assert document semantics or legal meaning  
+  
+---  
+  
+## Azure Artifact Signing Behavior (Important)  
+  
+The Seal‑Engine uses **Azure Artifact Signing’s Authenticode‑shaped signing API** to perform raw RSA signing operations. Only precomputed digests are submitted; document bytes are never transmitted. Payloads intentionally include `fileHashList` and `authenticodeHashList` fields to ensure compatibility with signtool‑created certificate profiles and to avoid undocumented Azure routing behavior. Azure returns signature bytes and certificate material exactly as emitted, without local reconstruction or modification.  
+  
+---  
+  
+## Configuration  
+  
+Configuration is validated at startup using **Pydantic v2** `BaseSettings`. All environment variables must be prefixed with `SIGNER_`.  
+  
+| Environment Variable | Description | Example / Format |  
+|---|---|---|  
+| `SIGNER_AZURE_TENANT_ID` | Microsoft Entra ID tenant ID | `xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx` |  
+| `SIGNER_AZURE_CLIENT_ID` | Entra ID application client ID | `xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx` |  
+| `SIGNER_AZURE_CLIENT_SECRET` | Service principal secret | Vault / K8s Secret |  
+| `SIGNER_AZURE_ARTIFACT_SIGNING_ACCOUNT` | Azure Artifact Signing account | `[a-zA-Z0-9-]{3,64}` |  
+| `SIGNER_AZURE_ARTIFACT_SIGNING_PROFILE` | Certificate profile name | `[a-zA-Z0-9-]{3,64}` |  
+| `SIGNER_AZURE_ARTIFACT_SIGNING_ENDPOINT` | Signing data‑plane endpoint | `https://<region>.codesigning.azure.net/` |  
+| `SIGNER_MAX_PDF_SIZE_MB` | Maximum allowed PDF size | `25` |  
+  
+---  
+  
+## Local Development  
+  
+### Container‑first development (recommended)  
+  
+The Seal‑Engine is designed to run in a containerized environment, which matches production behavior and is the recommended development workflow.  
+  
+```bash  
+docker compose --profile trusted build  
+docker compose --profile trusted up signer  
 ```  
-POST /sign-archival  
+  
+The service will be reachable from other services at `http://signer:8080` and from the host at `http://localhost:8080` for local testing only. OpenAPI documentation is available at `/docs`.  
+  
+---  
+  
+### Optional: Host‑based development  
+  
+For contributors who need to run the service directly on the host, Python 3.13 and [`uv`](https://github.com/astral-sh/uv) are required.  
+  
+```bash  
+uv sync --frozen  
+uv run fastapi run src/signer/main.py --port 8080  
 ```  
   
-### Request  
+Host‑based execution is optional and not the primary supported workflow.  
+  
+---  
+  
+## API Reference (Internal)  
+  
+### `POST /sign-archival`  
+  
+This is an internal API intended to be called only by the Document Engine.  
+  
+The endpoint applies a PAdES Baseline‑LT digital signature to a finalized, content‑complete PDF artifact.  
+  
+**Request**  
   
 - Content‑Type: `multipart/form-data`  
-- Field name: `file`  
-- Value: finalized PDF/A‑3b document  
+- Optional header: `X‑Correlation‑ID`  
   
-Example:  
-  
-```bash  
-curl -X POST http://seal-engine:8080/sign-archival \  
-  -F "file=@document_pdfa3.pdf" \  
-  --output document_signed.pdf  
-```  
-  
-### Response  
-  
-- `200 OK`  
-- Body: signed PDF bytes  
-- `Content-Type: application/pdf`  
-  
-### Error Responses  
-  
-| Status | Meaning |  
-|------|--------|  
-| 400 | Invalid or malformed PDF |  
-| 401 | Authentication failure |  
-| 403 | Missing or invalid signing permissions |  
-| 500 | Signing or timestamping failure |  
-  
----  
-  
-## Environment Variables  
-  
-The service is configured entirely via environment variables.  
-  
-### Required  
+**Example**  
   
 ```bash  
-AZURE_CLIENT_ID  
-AZURE_TENANT_ID  
-AZURE_CLIENT_SECRET  
+curl -X POST "http://localhost:8080/sign-archival" \  
+  -H "X-Correlation-ID: req-550e8400-e29b-41d4-a716-446655440000" \  
+  -F "file=@contract.pdf;type=application/pdf" \  
+  --output signed_contract.pdf  
 ```  
   
-These credentials must correspond to a Service Principal with the  
-**Trusted Signing Certificate Profile Signer** role.  
+**Responses**  
   
-### Optional  
+- `200 OK` – Signed PDF artifact  
+- `413 Payload Too Large`  
+- `415 Unsupported Media Type`  
+- `422 Unprocessable Entity`  
+- `500 Internal Server Error`  
   
-```bash  
-ASPNETCORE_URLS=http://0.0.0.0:8080  
-```  
+**Response headers include**  
   
----  
-  
-## Security Properties  
-  
-- Runs as **non‑root**  
-- Distroless image (no shell, no package manager)  
-- No writable persistent storage  
-- No certificate or key material on disk  
-- Stateless and horizontally scalable  
+- `X‑Correlation‑ID`  
+- `X‑Signer‑Backend: Azure-Artifact-Signing`  
+- `X‑Signature‑Standard: PAdES‑B‑LT`  
   
 ---  
   
-## Operational Notes  
+## Monitoring  
   
-- The service performs **no retries** on signing failures  
-- Azure RBAC role propagation may take up to **15 minutes**  
-- Identity validation must complete before first use  
-- Clock skew can affect timestamp validation — ensure NTP is available  
+### `GET /healthz`  
   
----  
-  
-## Verification (Adobe Acrobat)  
-  
-To verify a signed document:  
-  
-1. Open the PDF in Adobe Acrobat Reader or Pro  
-2. Open the **Signatures** panel  
-3. Confirm:  
-   - ✅ “Signature is valid”  
-   - ✅ “Signature is LTV enabled”  
-   - ✅ Green trust indicator  
-  
-No external network access is required for validation.  
+Internal liveness and readiness probe. The endpoint does not perform cryptographic operations and does not call Azure services. It is intended exclusively for orchestration health checks.  
   
 ---  
   
-## Failure Modes  
+## Security & Supply Chain  
   
-| Failure | Likely Cause |  
-|------|-------------|  
-| Signature invalid | Non‑incremental write upstream |  
-| LTV missing | OCSP/CRL fetch blocked |  
-| 403 Forbidden | Missing RBAC role |  
-| 401 Unauthorized | Invalid service principal |  
-| Timeout | Azure Trusted Signing unavailable |  
-```  
+All asymmetric cryptographic operations are performed exclusively within Azure‑managed **FIPS 140‑2 / FIPS 140‑3** HSMs. The signer sidecar never accesses or handles private key material. Containers run as a dedicated non‑root user. The build pipeline satisfies **SLSA Level 3** requirements, including reproducible builds and Cosign‑signed container images.  
+  
+---  
+  
+## Verification & Validation  
+  
+Normative verification behavior — including incremental revision structure, DSS placement, LTV semantics, and validator expectations — is defined in:  
+  
+👉 **[Seal‑Engine Technical Specification](technical-specification.md)**  
+  
+All cryptographic guarantees provided by the Seal‑Engine are derivable solely from the finalized PDF artifact itself.  

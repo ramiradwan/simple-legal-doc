@@ -48,6 +48,10 @@ def sign_pdf_pades_b(
         PdfSigningError:  
             If key loading or signing fails.  
     """  
+    if os.environ.get("ENV") == "production":  
+        raise PdfSigningError(  
+            "Local PAdES signing is disabled in production"  
+        )  
     p12_path = os.environ.get("SIGNING_P12_PATH")  
     p12_password = os.environ.get("SIGNING_P12_PASSWORD", "")  
   
