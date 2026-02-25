@@ -29,6 +29,13 @@ services:
       - backend  
     restart: unless-stopped  
   
+  proxy:  
+      profiles: ["trusted"]  
+      image: vimagick/tinyproxy:latest  
+      volumes:  
+        - ./proxy/tinyproxy.conf:/etc/tinyproxy/tinyproxy.conf:ro  
+      restart: unless-stopped  
+
   signer:  
     profiles: ["trusted"]  
     build:  
@@ -37,6 +44,11 @@ services:
     image: simple-legal-doc-signer  
     env_file:  
       - .env.signer  
+    environment:  
+      - HTTP_PROXY=http://proxy:8888 
+      - HTTPS_PROXY=http://proxy:8888
+    depends_on:  
+      - proxy  
     restart: unless-stopped  
     read_only: true  
     tmpfs:  
@@ -46,7 +58,7 @@ services:
         limits:  
           memory: 128M  
     healthcheck:  
-      test: ["CMD", "curl", "-f", "http://localhost:8080/healthz"]  
+      test: ["CMD", "curl", "-fsS", "http://localhost:8080/healthz"]  
       interval: 10s  
       timeout: 5s  
       retries: 3  

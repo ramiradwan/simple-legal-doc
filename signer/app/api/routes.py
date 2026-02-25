@@ -16,25 +16,27 @@ from fastapi.responses import Response
   
 from signer.app.core.config import Settings  
 from signer.app.services.azure_api import AzureArtifactSigningClient  
-from signer.app.services.external_signer import sign_pdf_with_azure  
+from signer.app.services.external_signer import (  
+    sign_pdf_with_certification_signature,  
+    add_dss_for_certification_signature,  
+    add_document_timestamp_final,  
+)  
   
 logger = logging.getLogger("signer.api")  
   
 router = APIRouter(tags=["Archival Sealing"])  
   
-  
-# -----------------------------------------------------------------------------  
-# Dependency Providers  
-# -----------------------------------------------------------------------------  
+# =============================================================================  
+# Dependency providers  
+# =============================================================================  
   
 def get_correlation_id(  
     x_correlation_id: Annotated[  
-        Optional[str], Header(description="Audit trace ID")  
+        Optional[str],  
+        Header(description="Audit trace ID"),  
     ] = None,  
 ) -> str:  
-    """  
-    Extract or generate a correlation ID for end-to-end traceability.  
-    """  
+    """Extract or generate a correlation ID for end-to-end traceability."""  
     if x_correlation_id and len(x_correlation_id) > 128:  
         return str(uuid.uuid4())  
     return x_correlation_id or str(uuid.uuid4())  
@@ -46,7 +48,8 @@ async def get_azure_client(
     """  
     Instantiate the Azure Artifact Signing client.  
   
-    The client is stateless; cryptographic state lives exclusively in Azure HSMs.  
+    The client is stateless; cryptographic state lives exclusively  
+    in Azure-managed HSMs.  
     """  
     settings: Settings = request.app.state.settings  
     if settings is None:  
@@ -59,13 +62,13 @@ async def get_azure_client(
     )  
   
   
-# -----------------------------------------------------------------------------  
-# API Route  
-# -----------------------------------------------------------------------------  
+# =============================================================================  
+# POST /sign-archival  
+# =============================================================================  
   
 @router.post(  
     "/sign-archival",  
-    summary="Seal a finalized PDF artifact",  
+    summary="Seal a finalized PDF artifact (PAdES-B or PAdES-B-LTA)",  
     response_class=Response,  
     responses={  
         200: {  
@@ -89,14 +92,32 @@ async def sign_archival(
         Depends(get_azure_client),  
     ],  
     correlation_id: Annotated[  
-        str, Depends(get_correlation_id)  
+        str,  
+        Depends(get_correlation_id),  
     ],  
 ) -> Response:  
     """  
-    Apply a PAdES Baseline-LT archival signature using Azure Artifact Signing.  
+    Apply a PAdES certification signature using Azure Artifact Signing.  
   
-    The input PDF is treated as FINAL and CONTENT-COMPLETE.  
+    Lifecycle (strictly enforced):  
+  
+    - enable_lta_updates = false  
+        Rev 1:  
+          - Certification signature (DocMDP)  
+          → PAdES-B  
+  
+    - enable_lta_updates = true  
+        Rev 1:  
+          - Certification signature (DocMDP)  
+        Rev 2:  
+          - DSS + VRI for certification signature  
+        Rev 3 (FINAL):  
+          - DocumentTimeStamp  
+          → PAdES-B-LTA  
+  
+    No modifications are performed after the document timestamp.  
     """  
+  
     settings: Settings = request.app.state.settings  
   
     # ------------------------------------------------------------------  
@@ -121,7 +142,7 @@ async def sign_archival(
   
     try:  
         # ------------------------------------------------------------------  
-        # 2. Bounded read (single-shot)  
+        # 2. Bounded read  
         # ------------------------------------------------------------------  
   
         input_pdf_bytes = await file.read(max_bytes + 1)  
@@ -134,48 +155,83 @@ async def sign_archival(
             )  
   
         if len(input_pdf_bytes) > max_bytes:  
-            logger.error(  
-                "payload_too_large",  
-                extra={"trace_id": correlation_id},  
-            )  
             raise HTTPException(  
                 status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,  
-                detail=(  
-                    f"File exceeds the "  
-                    f"{settings.max_pdf_size_mb}MB limit."  
-                ),  
+                detail=f"File exceeds the {settings.max_pdf_size_mb}MB limit.",  
                 headers={"X-Correlation-ID": correlation_id},  
             )  
   
-        if file.filename:  
-            safe_filename = (  
-                file.filename  
-                .replace('"', "")  
-                .replace("\n", "")  
-                .replace("\r", "")  
-                .replace("/", "_")  
-                .replace("\\", "_")  
-            )  
-        else:  
-            safe_filename = "signed.pdf"  
+        safe_filename = (  
+            file.filename.replace('"', "")  
+            .replace("\n", "")  
+            .replace("\r", "")  
+            .replace("/", "_")  
+            .replace("\\", "_")  
+            if file.filename  
+            else "signed.pdf"  
+        )  
   
         logger.info(  
             "initiating_archival_seal",  
             extra={  
                 "filename": safe_filename,  
                 "trace_id": correlation_id,  
+                "archival_mode": settings.enable_lta_updates,  
             },  
         )  
   
         # ------------------------------------------------------------------  
-        # 3. Signing orchestration  
+        # 3. Rev 1 — Certification signature (always)  
         # ------------------------------------------------------------------  
   
-        signed_pdf_bytes = await sign_pdf_with_azure(  
+        signed_pdf_bytes = await sign_pdf_with_certification_signature(  
             pdf_bytes=input_pdf_bytes,  
             settings=settings,  
             azure_client=azure_client,  
             correlation_id=correlation_id,  
+        )  
+  
+        # ------------------------------------------------------------------  
+        # 4. Stop here if archival updates are disabled  
+        # ------------------------------------------------------------------  
+  
+        if not settings.enable_lta_updates:  
+            logger.info(  
+                "baseline_signature_complete",  
+                extra={  
+                    "trace_id": correlation_id,  
+                    "signature_level": "PAdES-B",  
+                },  
+            )  
+  
+            return Response(  
+                content=signed_pdf_bytes,  
+                media_type="application/pdf",  
+                headers={  
+                    "Content-Disposition": (  
+                        f'attachment; filename="{safe_filename}"'  
+                    ),  
+                    "X-Correlation-ID": correlation_id,  
+                    "X-Signer-Backend": "Azure-Artifact-Signing",  
+                    "X-Signature-Standard": "PAdES-B",  
+                },  
+            )  
+  
+        # ------------------------------------------------------------------  
+        # 5. Rev 2 — DSS + VRI (LT)  
+        # ------------------------------------------------------------------  
+  
+        signed_pdf_bytes = await add_dss_for_certification_signature(  
+            pdf_bytes=signed_pdf_bytes,  
+        )  
+  
+        # ------------------------------------------------------------------  
+        # 6. Rev 3 — DocumentTimeStamp (FINAL)  
+        # ------------------------------------------------------------------  
+  
+        signed_pdf_bytes = await add_document_timestamp_final(  
+            pdf_bytes=signed_pdf_bytes,  
+            settings=settings,  
         )  
   
         logger.info(  
@@ -183,12 +239,9 @@ async def sign_archival(
             extra={  
                 "filename": safe_filename,  
                 "trace_id": correlation_id,  
+                "signature_level": "PAdES-B-LTA",  
             },  
         )  
-  
-        # ------------------------------------------------------------------  
-        # 4. Response (artifact)  
-        # ------------------------------------------------------------------  
   
         return Response(  
             content=signed_pdf_bytes,  
@@ -199,16 +252,16 @@ async def sign_archival(
                 ),  
                 "X-Correlation-ID": correlation_id,  
                 "X-Signer-Backend": "Azure-Artifact-Signing",  
-                "X-Signature-Standard": "PAdES-B-LT",  
+                "X-Signature-Standard": "PAdES-B-LTA",  
             },  
         )  
   
     except HTTPException:  
         raise  
   
-    except (ValueError, RuntimeError) as exc:  
+    except Exception as exc:  
         logger.exception(  
-            "signing_orchestration_failed",  
+            "signing_pipeline_failure",  
             extra={  
                 "trace_id": correlation_id,  
                 "error_type": type(exc).__name__,  
@@ -217,20 +270,6 @@ async def sign_archival(
         raise HTTPException(  
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,  
             detail="Archival signing failed.",  
-            headers={"X-Correlation-ID": correlation_id},  
-        ) from exc  
-  
-    except Exception as exc:  
-        logger.exception(  
-            "pipeline_unexpected_failure",  
-            extra={  
-                "trace_id": correlation_id,  
-                "error_type": type(exc).__name__,  
-            },  
-        )  
-        raise HTTPException(  
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,  
-            detail="Internal sealing error.",  
             headers={"X-Correlation-ID": correlation_id},  
         ) from exc  
   

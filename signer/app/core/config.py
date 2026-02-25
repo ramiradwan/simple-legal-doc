@@ -6,7 +6,7 @@ zero secret leakage, and fast-failure on invalid configuration.
 """  
   
 from functools import lru_cache  
-from typing import Annotated  
+from typing import Annotated, Optional  
   
 from pydantic import Field, SecretStr, AnyHttpUrl  
 from pydantic_settings import BaseSettings, SettingsConfigDict  
@@ -73,6 +73,47 @@ class Settings(BaseSettings):
     ]  
   
     # ---------------------------------------------------------------------  
+    # Network Egress (Outbound Proxy)  
+    # ---------------------------------------------------------------------  
+  
+    https_proxy: Annotated[  
+        Optional[AnyHttpUrl],  
+        Field(  
+            default=None,  
+            description=(  
+                "Optional outbound HTTPS proxy for Azure APIs, "  
+                "RFC 3161 timestamping, and CA revocation fetching"  
+            ),  
+        ),  
+    ]  
+  
+    # ---------------------------------------------------------------------  
+    # Archival Signature Lifecycle Controls  
+    # ---------------------------------------------------------------------  
+  
+    enable_lta_updates: Annotated[  
+        bool,  
+        Field(  
+            default=True,  
+            description=(  
+                "Enable PAdES LTA lifecycle operations "  
+                "(RFC3161 document timestamps)."  
+            ),  
+        ),  
+    ]  
+  
+    rfc3161_timestamp_url: Annotated[  
+        AnyHttpUrl,  
+        Field(  
+            default="https://timestamp.acs.microsoft.com",  
+            description=(  
+                "RFC 3161 timestamp authority used for PAdES LTA "  
+                "document timestamps."  
+            ),  
+        ),  
+    ]  
+  
+    # ---------------------------------------------------------------------  
     # Operational Boundaries  
     # ---------------------------------------------------------------------  
   
@@ -88,11 +129,11 @@ class Settings(BaseSettings):
   
     model_config = SettingsConfigDict(  
         env_prefix="SIGNER_",  
-        env_file=".env",              # local dev only; overridden by Docker env_file  
+        env_file=".env",  
         env_file_encoding="utf-8",  
         extra="ignore",  
         case_sensitive=False,  
-        frozen=True,                  # prevent runtime mutation  
+        frozen=True,  
     )  
   
   

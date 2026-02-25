@@ -63,6 +63,23 @@ async def lifespan(app: FastAPI):
     app.state.settings = settings  
   
     # ------------------------------------------------------------------  
+    # Resolve outbound HTTPS proxy (if configured)  
+    # ------------------------------------------------------------------  
+    proxy_url = (  
+        str(settings.https_proxy)  
+        if getattr(settings, "https_proxy", None)  
+        else None  
+    )  
+  
+    if proxy_url:  
+        logger.info(  
+            "outbound_proxy_configured",  
+            extra={"https_proxy": proxy_url},  
+        )  
+    else:  
+        logger.info("outbound_proxy_not_configured")  
+  
+    # ------------------------------------------------------------------  
     # Persistent HTTP client for Azure Artifact Signing  
     #  
     # Notes:  
@@ -70,6 +87,7 @@ async def lifespan(app: FastAPI):
     # - Azure Artifact Signing does not require HTTP/2  
     # ------------------------------------------------------------------  
     app.state.http_client = httpx.AsyncClient(  
+        proxy=proxy_url,  # for isolated networks  
         http2=False,  
         timeout=httpx.Timeout(  
             timeout=60.0,      # hard upper bound  

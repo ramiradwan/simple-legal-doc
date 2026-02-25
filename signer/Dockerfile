@@ -2,14 +2,13 @@
 # Signer (Seal‑Engine) — Cryptographic Sealing Sidecar  
 # ============================================================================  
   
-  
 # ============================================================================  
 # Stage 1: Builder (Deterministic Dependency Resolution)  
 # ============================================================================  
 FROM python:3.13-slim AS builder  
   
 # ---------------------------------------------------------------------------  
-# uv bootstrap (pinned, modern)  
+# uv bootstrap (pinned)  
 # ---------------------------------------------------------------------------  
 COPY --from=ghcr.io/astral-sh/uv:0.10.4 /uv /uvx /bin/  
   
@@ -25,14 +24,13 @@ WORKDIR /app
 # ---------------------------------------------------------------------------  
 RUN apt-get update && apt-get install -y --no-install-recommends \  
     ca-certificates \  
+    openssl \  
  && rm -rf /var/lib/apt/lists/*  
   
 # ---------------------------------------------------------------------------  
 # Python dependencies (locked, reproducible)  
 # ---------------------------------------------------------------------------  
-# (paths are relative to signer/ build context)  
 COPY pyproject.toml uv.lock ./  
-  
 RUN uv sync --no-dev --frozen  
   
   
@@ -61,6 +59,8 @@ WORKDIR /app
 # ---------------------------------------------------------------------------  
 RUN apt-get update && apt-get install -y --no-install-recommends \  
     ca-certificates \  
+    openssl \  
+    curl \  
  && apt-get clean \  
  && rm -rf /var/lib/apt/lists/*  
   
@@ -70,9 +70,27 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 COPY --from=builder /app/.venv /app/.venv  
   
 # ---------------------------------------------------------------------------  
+# Explicit trust anchors (deterministic, pinned)  
+# ---------------------------------------------------------------------------  
+RUN mkdir -p /app/trust  
+  
+# Microsoft Identity Verification Root Certificate Authority 2020  
+# Source: https://www.microsoft.com/pkiops/  
+RUN curl -fsSL \  
+      "https://www.microsoft.com/pkiops/certs/Microsoft%20Identity%20Verification%20Root%20Certificate%20Authority%202020.crt" \  
+      -o /app/trust/microsoft_root_ca_2020.der \  
+ && echo "5367f20c7ade0e2bca790915056d086b720c33c1fa2a2661acf787e3292e1270  /app/trust/microsoft_root_ca_2020.der" \  
+      | sha256sum -c - \  
+ && openssl x509 \  
+      -inform DER \  
+      -in /app/trust/microsoft_root_ca_2020.der \  
+      -out /app/trust/microsoft_root_ca_2020.pem  
+  
+# ---------------------------------------------------------------------------  
 # Runtime user (non‑root)  
 # ---------------------------------------------------------------------------  
-RUN useradd --create-home --shell /usr/sbin/nologin appuser  
+RUN useradd --create-home --shell /usr/sbin/nologin appuser \  
+ && chown -R appuser:appuser /app  
   
 # ---------------------------------------------------------------------------  
 # Application code  

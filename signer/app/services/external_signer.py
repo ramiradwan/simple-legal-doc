@@ -1,34 +1,44 @@
 """  
-Cryptographic orchestration for Azure Artifact Signing.  
+Cryptographic orchestration layer for Azure Artifact Signing.  
   
-Implements AzureArtifactSigner, a pyHanko Signer subclass that delegates  
-all asymmetric crypto operations to Azure-managed HSMs and assembles  
-PAdES Baseline-LT signatures locally.  
+Implements a lifecycle-correct PAdES signing pipeline:  
+  
+  Rev 1: Certification signature (DocMDP)           → PAdES-B  
+  Rev 2: DSS + VRI for certification signature       → PAdES-B-LT  
+  Rev 3: DocumentTimeStamp (FINAL, archival freeze) → PAdES-B-LTA  
+  
+The document timestamp is always the final cryptographic operation.  
+No updates are performed after timestamping.  
 """  
   
 import io  
-import logging  
 import base64  
-import time  
+import logging  
+from pathlib import Path  
 from typing import List  
   
 import aiohttp  
-from asn1crypto import x509  
+from asn1crypto import x509, pem  
+from asn1crypto.algos import SignedDigestAlgorithm  
   
 from cryptography import x509 as crypto_x509  
-from cryptography.hazmat.primitives import hashes, serialization  
+from cryptography.hazmat.primitives import serialization  
 from cryptography.hazmat.primitives.serialization import pkcs7  
   
 from pyhanko.pdf_utils.incremental_writer import IncrementalPdfFileWriter  
+from pyhanko.pdf_utils.reader import PdfFileReader  
 from pyhanko.sign import signers  
-from pyhanko.sign.fields import SigSeedSubFilter  
+from pyhanko.sign.fields import SigSeedSubFilter, MDPPerm  
 from pyhanko.sign.timestamps.aiohttp_client import AIOHttpTimeStamper  
-from pyhanko.sign.validation.dss import DocumentSecurityStore  
+from pyhanko.sign.signers.pdf_signer import (  
+    PdfTimeStamper,  
+    TimestampDSSContentSettings,  
+)  
+from pyhanko.sign.validation import dss  
+from pyhanko.sign.validation.pdf_embedded import EmbeddedPdfSignature  
   
 from pyhanko_certvalidator import ValidationContext  
-from pyhanko_certvalidator.fetchers.aiohttp_fetchers import (  
-    AIOHttpFetcherBackend,  
-)  
+from pyhanko_certvalidator.fetchers.aiohttp_fetchers import AIOHttpFetcherBackend  
 from pyhanko_certvalidator.registry import SimpleCertificateStore  
   
 from signer.app.core.config import Settings  
@@ -36,24 +46,36 @@ from signer.app.services.azure_api import AzureArtifactSigningClient
   
 logger = logging.getLogger("signer.external_signer")  
   
+# ==============================================================================  
+# Trust anchors  
+# ==============================================================================  
   
-# ----------------------------------------------------------------------  
-# Certificate handling (Azure-specific)  
-# ----------------------------------------------------------------------  
+TRUST_DIR = Path("/app/trust")  
   
-_CERT_CACHE_TTL_SECONDS = 900  # 15 minutes  
-_cert_cache: dict[str, tuple[float, List[x509.Certificate]]] = {}  
   
+def load_trust_roots() -> List[x509.Certificate]:  
+    roots: List[x509.Certificate] = []  
+  
+    if not TRUST_DIR.exists():  
+        raise RuntimeError("Trust directory /app/trust does not exist")  
+  
+    for path in TRUST_DIR.glob("*"):  
+        data = path.read_bytes()  
+        if pem.detect(data):  
+            _, _, data = pem.unarmor(data)  
+        roots.append(x509.Certificate.load(data))  
+  
+    if not roots:  
+        raise RuntimeError("No trust anchors found")  
+  
+    return roots  
+  
+  
+# ==============================================================================  
+# Azure certificate utilities  
+# ==============================================================================  
   
 def _normalize_azure_blob(blob: bytes) -> bytes:  
-    """  
-    Normalize Azure output into bytes consumable by cryptography.  
-  
-    Azure Artifact Signing may return:  
-    - Base64-encoded PKCS#7 (often with newlines)  
-    - PEM PKCS#7 or CERTIFICATE  
-    - Raw DER (rare)  
-    """  
     data = blob.strip()  
   
     if data.startswith(b"-----BEGIN"):  
@@ -61,7 +83,7 @@ def _normalize_azure_blob(blob: bytes) -> bytes:
   
     try:  
         decoded = base64.b64decode(data, validate=False)  
-        if decoded and decoded[0] == 0x30:  # ASN.1 SEQUENCE  
+        if decoded and decoded[0] in (0x30, 0xA0):  
             return decoded  
     except Exception:  
         pass  
@@ -69,136 +91,84 @@ def _normalize_azure_blob(blob: bytes) -> bytes:
     return data  
   
   
-def _extract_certificates(data: bytes) -> List[x509.Certificate]:  
-    """  
-    Extract X.509 certificates from PKCS#7 or standalone certificate blobs.  
-    """  
-    extracted: List[x509.Certificate] = []  
+def _extract_certificates(blob: bytes) -> List[x509.Certificate]:  
+    data = _normalize_azure_blob(blob)  
   
-    # PKCS#7 (PEM or DER)  
-    try:  
-        if data.startswith(b"-----BEGIN"):  
-            crypto_certs = pkcs7.load_pem_pkcs7_certificates(data)  
-        else:  
-            crypto_certs = pkcs7.load_der_pkcs7_certificates(data)  
-  
-        for cert in crypto_certs:  
-            if isinstance(cert, crypto_x509.Certificate):  
-                extracted.append(  
+    for loader in (  
+        pkcs7.load_der_pkcs7_certificates,  
+        pkcs7.load_pem_pkcs7_certificates,  
+    ):  
+        try:  
+            certs = loader(data)  
+            if certs:  
+                return [  
                     x509.Certificate.load(  
-                        cert.public_bytes(serialization.Encoding.DER)  
+                        c.public_bytes(serialization.Encoding.DER)  
                     )  
+                    for c in certs  
+                ]  
+        except Exception:  
+            pass  
+  
+    for loader in (  
+        crypto_x509.load_der_x509_certificate,  
+        crypto_x509.load_pem_x509_certificate,  
+    ):  
+        try:  
+            cert = loader(data)  
+            return [  
+                x509.Certificate.load(  
+                    cert.public_bytes(serialization.Encoding.DER)  
                 )  
+            ]  
+        except Exception:  
+            pass  
   
-        if extracted:  
-            return extracted  
-    except Exception:  
-        pass  
-  
-    # Single X.509 certificate  
-    try:  
-        if data.startswith(b"-----BEGIN"):  
-            cert = crypto_x509.load_pem_x509_certificate(data)  
-        else:  
-            cert = crypto_x509.load_der_x509_certificate(data)  
-  
-        return [  
-            x509.Certificate.load(  
-                cert.public_bytes(serialization.Encoding.DER)  
-            )  
-        ]  
-    except Exception as exc:  
-        raise RuntimeError(  
-            "Azure signingCertificate is not PKCS#7 or X.509 (PEM or DER)"  
-        ) from exc  
+    raise RuntimeError("Azure returned unparseable certificate data")  
   
   
 async def bootstrap_azure_cert_chain(  
-    *,  
     azure_client: AzureArtifactSigningClient,  
     correlation_id: str,  
 ) -> List[x509.Certificate]:  
-    """  
-    Bootstrap the signing certificate chain.  
-  
-    Azure only exposes certificates as part of a signing operation.  
-    Results are cached briefly to avoid redundant HSM calls.  
-    """  
-    cache_key = (  
-        f"{azure_client.settings.azure_artifact_signing_account}:"  
-        f"{azure_client.settings.azure_artifact_signing_profile}"  
-    )  
-  
-    cached = _cert_cache.get(cache_key)  
-    if cached and (time.time() - cached[0]) < _CERT_CACHE_TTL_SECONDS:  
-        return cached[1]  
-  
-    dummy_digest = b"\x00" * 32  # SHA-256 length  
-  
-    _, cert_chain = await azure_client.sign_digest(  
-        digest=dummy_digest,  
+    _, blobs = await azure_client.sign_raw(  
+        data=b"bootstrap",  
         algorithm="RS256",  
-        correlation_id=correlation_id,  
+        correlation_id=f"{correlation_id}-bootstrap",  
     )  
   
-    if not cert_chain:  
-        raise RuntimeError("Azure returned empty certificate chain")  
+    certs: List[x509.Certificate] = []  
+    for blob in blobs:  
+        certs.extend(_extract_certificates(blob))  
   
-    all_certs: List[x509.Certificate] = []  
+    if not certs:  
+        raise RuntimeError("Failed to retrieve Azure signing certificates")  
   
-    for blob in cert_chain:  
-        normalized = _normalize_azure_blob(blob)  
-        all_certs.extend(_extract_certificates(normalized))  
-  
-    if not all_certs:  
-        raise RuntimeError(  
-            "Failed to extract any X.509 certificates from Azure response"  
-        )  
-  
-    _cert_cache[cache_key] = (time.time(), all_certs)  
-    return all_certs  
+    return certs  
   
   
-# ----------------------------------------------------------------------  
-# pyHanko Signer  
-# ----------------------------------------------------------------------  
+# ==============================================================================  
+# Azure-backed CMS signer  
+# ==============================================================================  
   
 class AzureArtifactSigner(signers.Signer):  
-    """  
-    pyHanko Signer that delegates RSA signing to Azure Artifact Signing.  
-    """  
-  
     def __init__(  
         self,  
         *,  
-        settings: Settings,  
+        signing_cert: x509.Certificate,  
+        chain: List[x509.Certificate],  
         azure_client: AzureArtifactSigningClient,  
         correlation_id: str,  
-        signing_cert: x509.Certificate,  
-        other_certs: List[x509.Certificate],  
     ):  
-        self.settings = settings  
-        self._azure_client = azure_client  
-        self.correlation_id = correlation_id  
-  
-        # Guardrails  
-        key_size = signing_cert.public_key.bit_size  
-        if key_size < 2048:  
-            raise ValueError(  
-                "Signing key size below 2048 bits is not allowed"  
-            )  
-  
-        cert_registry = SimpleCertificateStore()  
-        cert_registry.register(signing_cert)  
-        cert_registry.register_multiple(other_certs)  
-  
         super().__init__(  
             signing_cert=signing_cert,  
-            cert_registry=cert_registry,  
-            prefer_pss=False,  # Azure uses PKCS#1 v1.5  
+            cert_registry=SimpleCertificateStore.from_certs(chain),  
+            signature_mechanism=SignedDigestAlgorithm(  
+                {"algorithm": "sha256_rsa"}  
+            ),  
         )  
-  
-        self._key_size_bytes = key_size // 8  
+        self._azure_client = azure_client  
+        self._correlation_id = correlation_id  
   
     async def async_sign_raw(  
         self,  
@@ -207,133 +177,194 @@ class AzureArtifactSigner(signers.Signer):
         dry_run: bool = False,  
     ) -> bytes:  
         if dry_run:  
-            return b"\x00" * self._key_size_bytes  
+            return b"\x00" * (self.signing_cert.public_key.bit_size // 8)  
   
-        hash_map = {  
-            "sha256": hashes.SHA256(),  
-            "sha384": hashes.SHA384(),  
-            "sha512": hashes.SHA512(),  
-        }  
+        if digest_algorithm.lower() != "sha256":  
+            raise ValueError("Unsupported digest algorithm")  
   
-        algo = hash_map.get(digest_algorithm.lower())  
-        if not algo:  
-            raise ValueError(  
-                f"Unsupported digest algorithm: {digest_algorithm}"  
-            )  
-  
-        hasher = hashes.Hash(algo)  
-        hasher.update(data)  
-        digest = hasher.finalize()  
-  
-        azure_algo_map = {  
-            "sha256": "RS256",  
-            "sha384": "RS384",  
-            "sha512": "RS512",  
-        }  
-  
-        signature, _ = await self._azure_client.sign_digest(  
-            digest=digest,  
-            algorithm=azure_algo_map[digest_algorithm.lower()],  
-            correlation_id=self.correlation_id,  
+        signature, _ = await self._azure_client.sign_raw(  
+            data=data,  
+            algorithm="RS256",  
+            correlation_id=self._correlation_id,  
         )  
-  
         return signature  
   
   
-# ----------------------------------------------------------------------  
-# High-level sealing orchestration  
-# ----------------------------------------------------------------------  
+# ==============================================================================  
+# Rev 1 — Certification signature (PAdES-B)  
+# ==============================================================================  
   
-async def sign_pdf_with_azure(  
+async def sign_pdf_with_certification_signature(  
     *,  
     pdf_bytes: bytes,  
     settings: Settings,  
     azure_client: AzureArtifactSigningClient,  
     correlation_id: str,  
 ) -> bytes:  
-    """  
-    Produce a PAdES Baseline-LT signed PDF using Azure-backed HSM signing.  
-    """  
     certs = await bootstrap_azure_cert_chain(  
         azure_client=azure_client,  
         correlation_id=correlation_id,  
     )  
   
-    signer = AzureArtifactSigner(  
-        settings=settings,  
-        azure_client=azure_client,  
-        correlation_id=correlation_id,  
-        signing_cert=certs[0],  
-        other_certs=certs[1:],  
+    trust_roots = load_trust_roots()  
+  
+    async with aiohttp.ClientSession(trust_env=True) as session:  
+        fetcher = AIOHttpFetcherBackend(session)  
+  
+        validation_context = ValidationContext(  
+            trust_roots=trust_roots,  
+            other_certs=certs,  
+            allow_fetching=True,  
+            fetcher_backend=fetcher,  
+            revocation_mode="hard-fail",  
+        )  
+  
+        signer = AzureArtifactSigner(  
+            signing_cert=certs[0],  
+            chain=certs,  
+            azure_client=azure_client,  
+            correlation_id=correlation_id,  
+        )  
+  
+        docmdp_permissions = (  
+            MDPPerm.ANNOTATE  
+            if settings.enable_lta_updates  
+            else MDPPerm.NO_CHANGES  
+        )  
+  
+        meta = signers.PdfSignatureMetadata(  
+            field_name="ArchiveSignature",  
+            certify=True,  
+            docmdp_permissions=docmdp_permissions,  
+            md_algorithm="sha256",  
+            subfilter=SigSeedSubFilter.PADES,  
+            validation_context=validation_context,  
+            embed_validation_info=False,  
+            signer_key_usage={"digital_signature"},  
+        )  
+  
+        writer = IncrementalPdfFileWriter(io.BytesIO(pdf_bytes))  
+  
+        output = await signers.async_sign_pdf(  
+            writer,  
+            signature_meta=meta,  
+            signer=signer,  
+            timestamper=None,  
+        )  
+  
+        return output.getvalue()  
+  
+  
+# ==============================================================================  
+# Rev 2 — DSS + VRI (PAdES-B-LT)  
+# ==============================================================================  
+  
+async def add_dss_for_certification_signature(  
+    *,  
+    pdf_bytes: bytes,  
+) -> bytes:  
+    trust_roots = load_trust_roots()  
+  
+    reader = PdfFileReader(io.BytesIO(pdf_bytes))  
+    embedded_sigs = list(reader.embedded_signatures)  
+  
+    if len(embedded_sigs) != 1:  
+        raise RuntimeError(  
+            f"Expected exactly one signature, found {len(embedded_sigs)}"  
+        )  
+  
+    embedded_sig: EmbeddedPdfSignature = embedded_sigs[0]  
+  
+    validation_context = ValidationContext(  
+        trust_roots=trust_roots,  
+        allow_fetching=True,  
+        revocation_mode="hard-fail",  
     )  
   
-    async with aiohttp.ClientSession() as session:  
+    output = await dss.async_add_validation_info(  
+        embedded_sig=embedded_sig,  
+        validation_context=validation_context,  
+        skip_timestamp=False,  
+        add_vri_entry=True,  
+        force_write=False,  
+        embed_roots=True,  
+    )  
+  
+    return output.getvalue()  
+  
+  
+# ==============================================================================  
+# Rev 3 — DocumentTimeStamp (FINAL, PAdES-B-LTA)  
+# ==============================================================================  
+  
+async def add_document_timestamp_final(  
+    *,  
+    pdf_bytes: bytes,  
+    settings: Settings,  
+) -> bytes:  
+    trust_roots = load_trust_roots()  
+  
+    validation_context = ValidationContext(  
+        trust_roots=trust_roots,  
+        allow_fetching=True,  
+        revocation_mode="hard-fail",  
+    )  
+  
+    async with aiohttp.ClientSession(trust_env=True) as session:  
         timestamper = AIOHttpTimeStamper(  
-            url="https://timestamp.acs.microsoft.com",  
+            url=str(settings.rfc3161_timestamp_url),  
             session=session,  
         )  
   
         writer = IncrementalPdfFileWriter(io.BytesIO(pdf_bytes))  
-        signed_out = io.BytesIO()  
   
-        meta = signers.PdfSignatureMetadata(  
-            field_name="ArchiveSignature",  
-            subfilter=SigSeedSubFilter.PADES,  
-            md_algorithm="sha256",  
-            reason="Document integrity verification",  
-            location="Azure Artifact Signing Service",  
-        )  
-  
-        await signers.async_sign_pdf(  
-            pdf_out=writer,  
-            signature_meta=meta,  
-            signer=signer,  
+        pdf_ts = PdfTimeStamper(  
             timestamper=timestamper,  
-            output=signed_out,  
-            bytes_reserved=32768,  
+            field_name="DocumentTimeStamp",  
         )  
   
-        # --------------------------------------------------------------  
-        # Embed DSS (LT)  
-        # --------------------------------------------------------------  
-  
-        dss_writer = IncrementalPdfFileWriter(  
-            io.BytesIO(signed_out.getvalue())  
-        )  
-  
-        fetcher = AIOHttpFetcherBackend(session)  
-  
-        root_cert = next(  
-            (  
-                cert  
-                for cert in certs  
-                if cert.ca and cert.subject == cert.issuer  
+        output = await pdf_ts.async_timestamp_pdf(  
+            writer,  
+            md_algorithm="sha256",  
+            validation_context=validation_context,  
+            dss_settings=TimestampDSSContentSettings(  
+                update_before_ts=True,  
+                include_vri=False,  
             ),  
-            certs[-1],  
+            embed_roots=True,  
         )  
   
-        vc = ValidationContext(  
-            trust_roots=[root_cert],  
-            allow_fetching=True,  
-            fetcher_backend=fetcher,  
-        )  
+        return output.getvalue()  
   
-        try:  
-            paths = await vc.async_validate_cert(signer.signing_cert)  
-        except Exception as exc:  
-            logger.warning(  
-                "revocation_fetch_failed_downgrading_to_bt",  
-                extra={  
-                    "trace_id": correlation_id,  
-                    "error_type": type(exc).__name__,  
-                },  
-            )  
-            paths = None  
   
-        dss = DocumentSecurityStore(dss_writer)  
-        if paths:  
-            dss.add_validation_info(vc, paths)  
+# ==============================================================================  
+# Public orchestration API  
+# ==============================================================================  
   
-        final_out = io.BytesIO()  
-        dss_writer.write(final_out)  
-        return final_out.getvalue()  
+async def sign_archival_pdf(  
+    *,  
+    input_pdf: bytes,  
+    settings: Settings,  
+    azure_client: AzureArtifactSigningClient,  
+    correlation_id: str,  
+) -> bytes:  
+    """  
+    Produce a lifecycle-final PAdES-B-LTA archival PDF.  
+    """  
+    pdf = await sign_pdf_with_certification_signature(  
+        pdf_bytes=input_pdf,  
+        settings=settings,  
+        azure_client=azure_client,  
+        correlation_id=correlation_id,  
+    )  
+  
+    pdf = await add_dss_for_certification_signature(  
+        pdf_bytes=pdf,  
+    )  
+  
+    pdf = await add_document_timestamp_final(  
+        pdf_bytes=pdf,  
+        settings=settings,  
+    )  
+  
+    return pdf  
