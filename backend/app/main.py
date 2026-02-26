@@ -2,6 +2,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware  
 
 from app.api.generate import router as generate_router  
+from app.api.templates import router as templates_router
   
 app = FastAPI(  
     title="simple-legal-doc",  
@@ -10,6 +11,7 @@ app = FastAPI(
 )  
   
 app.include_router(generate_router, prefix="/generate")  
+app.include_router(templates_router, prefix="/templates")
 
 app.add_middleware(  
     CORSMiddleware,  

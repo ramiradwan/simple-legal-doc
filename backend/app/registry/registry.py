@@ -17,6 +17,7 @@ from typing import Dict, Type
 from pydantic import BaseModel  
   
 from app.schemas.decision import DecisionPayload  
+from app.schemas.compliance_test import ComplianceTestPayload
   
   
 class TemplateEntry(BaseModel):  
@@ -47,4 +48,17 @@ TEMPLATE_REGISTRY: Dict[str, TemplateEntry] = {
             "PDF/A-3b archival normalization, and cryptographic sealing."  
         ),  
     ),  
+    "compliance-test-doc": TemplateEntry(
+        slug="compliance-test-doc",
+        schema=ComplianceTestPayload,
+        template_path="compliance_test/main.tex.jinja",
+        description=(
+            "Compliance risk assessment memo. "
+            "Test template designed to stress-test the LDVP empirical "
+            "feedback loop. The open-ended justification and mitigation "
+            "fields provide surface area for P7 Risk & Compliance findings "
+            "when declared risk levels are inconsistent with accompanying "
+            "reasoning."
+        ),
+    ),    
 }  

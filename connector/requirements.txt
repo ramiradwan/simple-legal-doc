@@ -1,0 +1,25 @@
+# connector/requirements.txt
+#
+# Runtime dependencies for the simple-legal-doc MCP connector.
+#
+# Kept intentionally minimal. The connector is a thin HTTP relay and
+# must not pull in backend dependencies (LaTeX tooling, cryptographic
+# libraries, etc.) that would inflate startup time or introduce
+# libraries that write to stdout.
+#
+# Pydantic is intentionally absent as a direct dependency. It is a
+# transitive dependency pulled in by the mcp package and requires no
+# explicit pin here.
+#
+# Install into a dedicated virtual environment:
+#   python -m venv venv
+#   source venv/bin/activate          # macOS / Linux
+#   venv\Scripts\activate.bat         # Windows
+#   pip install -r requirements.txt
+#
+# Use the absolute path to the venv's python executable in
+# claude_desktop_config.json, not the system python or an activation
+# shim. Claude Desktop does not execute shell activation scripts.
+
+mcp[cli]>=1.0.0
+httpx>=0.27.0

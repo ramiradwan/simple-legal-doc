@@ -1,0 +1,110 @@
+% !TeX program = lualatex  
+  
+\BLOCK{ include "compliance_test/preamble.tex.jinja" }  
+  
+\begin{document}  
+  
+% ------------------------------------------------------------------  
+% PDF/A-3 META ATTACHMENTS  
+% ------------------------------------------------------------------  
+\EmbedMetaAttachment  
+  {semantic-payload.json}  
+  {Canonical semantic payload used to generate this document}  
+  {application/json}  
+  {Data}  
+  
+% ------------------------------------------------------------------  
+% DOCUMENT HEADER  
+% ------------------------------------------------------------------  
+\begin{flushleft}
+  {\sffamily\LARGE\bfseries\color{branddark} Compliance Risk Assessment}\\[0.6em]  
+  {\sffamily\large\color{brandgray} Internal Audit \& Compliance Record}  
+\end{flushleft}
+  
+\vspace{1em}  
+  
+% ------------------------------------------------------------------  
+% METADATA PANEL 
+% ------------------------------------------------------------------  
+\begin{tcolorbox}[
+  enhanced,
+  arc=3pt,
+  outer arc=3pt,
+  boxrule=0.5pt,
+  colback=panelbg, 
+  colframe=panelborder,
+  borderline west={3pt}{0pt}{brandaccent}, 
+  left=1.5em, 
+  right=1.5em, 
+  top=1.2em, 
+  bottom=1.2em
+]
+  \sffamily\small
+  \begin{tabularx}{\linewidth}{@{}lX@{}}  
+    \textcolor{brandgray}{\textbf{Subject:}} & \textbf{\DocSubject} \\[0.5em]  
+    \textcolor{brandgray}{\textbf{Author:}}  & \DocAuthor \\[0.5em]  
+    \textcolor{brandgray}{\textbf{Date:}}    & \DocDate \\[0.5em]  
+    \textcolor{brandgray}{\textbf{SHA-256:}} & \texttt{\footnotesize\color{branddark}\DocHash} \\  
+  \end{tabularx}  
+\end{tcolorbox}
+  
+\vspace{1em}  
+  
+% ------------------------------------------------------------------  
+% RISK LEVEL DECLARATION (BADGE)
+% ------------------------------------------------------------------  
+\section*{Assessed Risk Level}  
+  
+\BLOCK{ if risk_level == "HIGH" }  
+  \tcbox[enhanced, arc=1pt, colback=riskHigh, colframe=riskHigh, coltext=white, boxrule=0pt, left=7pt, right=7pt, top=3pt, bottom=3pt, fontupper=\sffamily\bfseries\small]{HIGH RISK}  
+\BLOCK{ elif risk_level == "MEDIUM" }  
+  \tcbox[enhanced, arc=1pt, colback=riskMed, colframe=riskMed, coltext=white, boxrule=0pt, left=7pt, right=7pt, top=3pt, bottom=3pt, fontupper=\sffamily\bfseries\small]{MEDIUM RISK}  
+\BLOCK{ else }  
+  \tcbox[enhanced, arc=1pt, colback=riskLow, colframe=riskLow, coltext=white, boxrule=0pt, left=7pt, right=7pt, top=3pt, bottom=3pt, fontupper=\sffamily\bfseries\small]{LOW RISK}  
+\BLOCK{ endif }  
+
+\vspace{1.5em} % Creates a clean break before the Justification section
+  
+% ------------------------------------------------------------------  
+% JUSTIFICATION  
+% ------------------------------------------------------------------  
+\section*{Risk Justification}  
+  
+{\rmfamily\Justification\par} 
+  
+% ------------------------------------------------------------------  
+% MITIGATION STRATEGY  
+% ------------------------------------------------------------------  
+\section*{Mitigation Strategy}  
+  
+{\rmfamily\Mitigation\par} 
+  
+% ------------------------------------------------------------------  
+% REGULATORY REFERENCES (conditional)  
+% ------------------------------------------------------------------  
+\BLOCK{ if regulatory_references }  
+\section*{Regulatory References}  
+  
+{\rmfamily The following regulatory frameworks and standards are identified as applicable to this assessment and are flagged for human verification:\par}  
+  
+\begin{tcolorbox}[
+  enhanced,
+  arc=3pt,
+  outer arc=3pt,
+  colback=panelbg, 
+  colframe=panelborder, 
+  boxrule=0.5pt, 
+  left=2em, 
+  right=2em, 
+  top=1em, 
+  bottom=1em
+]
+  \sffamily\small\color{branddark!85} \RegulatoryRefs 
+\end{tcolorbox}
+  
+{\footnotesize\itshape\color{brandgray}  
+Note: External regulatory references have not been verified for current applicability and must be reviewed by qualified legal or compliance personnel before reliance.\par  
+}  
+\BLOCK{ endif }  
+  
+\end{document}
