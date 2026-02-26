@@ -1,0 +1,43 @@
+# Shell scripts must use LF. CRLF line endings in .sh files will cause  
+# "bad interpreter" errors on macOS and Linux, even when the file  
+# content is otherwise correct.  
+#  
+# Windows batch scripts must use CRLF. Some enterprise Windows  
+# environments reject batch files with LF-only line endings.  
+#  
+# Python files use LF. This follows CPython conventions and avoids  
+# edge cases in parsing and regex behavior.  
+#  
+# JSON and Markdown use LF for consistency across all platforms.  
+# LaTeX templates use LF to preserve deterministic rendering.  
+  
+# Default: normalize text files to LF  
+*               text=auto eol=lf  
+  
+# Shell scripts — LF mandatory  
+*.sh            text eol=lf  
+  
+# Windows batch scripts — CRLF mandatory  
+*.bat           text eol=crlf  
+  
+# Python source  
+*.py            text eol=lf  
+  
+# Configuration and data files  
+*.json          text eol=lf  
+*.toml          text eol=lf  
+*.yaml          text eol=lf  
+*.yml           text eol=lf  
+*.md            text eol=lf  
+*.txt           text eol=lf  
+  
+# LaTeX templates  
+*.tex           text eol=lf  
+*.tex.jinja     text eol=lf  
+  
+# Binary files — no line ending processing  
+*.pdf           binary  
+*.p12           binary  
+*.der           binary  
+*.png           binary  
+*.jpg           binary  
