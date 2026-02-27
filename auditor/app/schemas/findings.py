@@ -205,6 +205,18 @@ class FindingObject(BaseModel):
         None,  
         description="Optional structured metadata for tooling or reviewers",  
     )  
+    requires_stv: bool = Field(  
+        default=False,  
+        description=(  
+            "When True, this finding was raised structurally by AIA but "  
+            "cannot be resolved without Seal Trust Verification. "  
+            "These findings are non-fatal at the AIA layer. "  
+            "If STV is disabled and any requires_stv=True findings are "  
+            "present, the coordinator will fail the audit with an explicit "  
+            "explanation. If STV is enabled, STV is responsible for "  
+            "resolving or escalating the finding."  
+        ),  
+    )  
   
     model_config = ConfigDict(  
         frozen=True,  

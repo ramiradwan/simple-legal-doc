@@ -10,7 +10,7 @@ def test_ldvp_adapter_accepts_null_semantic_payload_deterministically():
         raw_finding=DummyFinding(rule_id="R_TEST"),  
         source=FindingSource.SEMANTIC_AUDIT,  
         sequence=0,  
-        semantic_payload=None,  
+        document_content=None,  
     )  
   
     assert finding.finding_id.startswith("LDVP-P3-")  

@@ -1,23 +1,28 @@
 """  
-Cryptographic binding verification between embedded semantic data and  
-document metadata.  
+Cryptographic binding verification between embedded Document Content  
+and declared integrity bindings.  
   
-This module verifies that the embedded machine-readable payload is  
-cryptographically bound to the document via XMP metadata. It prevents  
-divergence between what the document declares and what its embedded  
-data represents.  
+This module verifies that the embedded Document Content payload is  
+cryptographically bound to the document via declared bindings  
+(e.g. content_hash).  
   
-Verification is deterministic and non-probabilistic.  
+SCOPE (AIA ONLY)  
+----------------  
+- Deterministic  
+- Non-probabilistic  
+- Signature-agnostic  
+- No PDF parsing  
+  
+Seal Trust Verification (STV) is responsible for resolving cryptographic  
+ambiguity related to signatures, DocMDP policy, or post-signing  
+modifications.  
 """  
   
 from __future__ import annotations  
   
-import io  
 import hashlib  
 import json  
-from typing import List, Optional  
-  
-import pikepdf  
+from typing import List, Optional, Tuple  
   
 from auditor.app.schemas.findings import (  
     FindingObject as Finding,  
@@ -28,201 +33,247 @@ from auditor.app.schemas.findings import (
     FindingCategory,  
 )  
   
-from auditor.app.checks.artifact.semantic_extraction import (  
-    extract_embedded_payload,  
-)  
-  
 # ------------------------------------------------------------------  
 # Canonicalization & hashing  
 # ------------------------------------------------------------------  
   
   
-def _canonicalize_json(payload_bytes: bytes) -> Optional[bytes]:  
+def _canonicalize_content_payload(content: dict) -> Optional[bytes]:  
     """  
-    Perform deterministic JSON canonicalization.  
+    Deterministically canonicalize the Document Content payload.  
   
-    This is RFC 8785–style canonicalization (stable key ordering and  
-    separators). Full numeric normalization is intentionally not attempted.  
+    Canonicalization rules:  
+    - UTF-8 JSON encoding  
+    - Sorted object keys  
+    - No insignificant whitespace  
+    - No numeric normalization beyond JSON parsing  
+  
+    RETURNS:  
+        bytes on success  
+        None on failure  
     """  
-    try:  
-        data = json.loads(payload_bytes)  
-    except Exception:  
-        return None  
-  
     try:  
         canonical = json.dumps(  
-            data,  
+            content,  
             ensure_ascii=False,  
             separators=(",", ":"),  
             sort_keys=True,  
         )  
+        return canonical.encode("utf-8")  
     except Exception:  
         return None  
-  
-    return canonical.encode("utf-8")  
   
   
 def _compute_sha256(data: bytes) -> str:  
-    """Compute SHA-256 hex digest for the given bytes."""  
+    """Compute SHA-256 hex digest."""  
     return hashlib.sha256(data).hexdigest()  
   
   
-# ------------------------------------------------------------------  
-# Claimed hash extraction  
-# ------------------------------------------------------------------  
-  
-  
-def _extract_claimed_hash_from_xmp(pdf_bytes: bytes) -> Optional[str]:  
+def _parse_content_hash(value: str) -> Optional[Tuple[str, str]]:  
     """  
-    Extract the claimed semantic hash from XMP metadata.  
+    Parse a declared content_hash value.  
   
-    XMP keys are exposed in Clark notation:  
-        {namespace-uri}LocalName  
+    Accepted formats:  
+    - "<hex>"  
+    - "SHA-256:<hex>" (case-insensitive)  
+  
+    RETURNS:  
+        (algorithm, hex_digest) on success  
+        None on failure  
     """  
-    SEMANTIC_NS = "https://simple-legal-doc.org/ns/semantic"  
+    value = value.strip()  
   
-    try:  
-        with pikepdf.open(io.BytesIO(pdf_bytes)) as pdf:  
-            xmp = pdf.open_metadata()  
-            if xmp is None:  
-                return None  
+    if ":" in value:  
+        algo, digest = value.split(":", 1)  
+        algo = algo.strip().upper()  
+        digest = digest.strip()  
+    else:  
+        algo = "SHA-256"  
+        digest = value  
   
-            # Primary, namespace-safe lookup  
-            value = xmp.get(f"{{{SEMANTIC_NS}}}SemanticHash")  
-  
-            # Defensive fallback (non-canonical prefix-based access)  
-            if value is None:  
-                value = xmp.get("sl:SemanticHash")  
-  
-            return value  
-    except Exception:  
+    if algo != "SHA-256":  
         return None  
   
+    if not digest or any(c not in "0123456789abcdefABCDEF" for c in digest):  
+        return None  
+  
+    return algo, digest.lower()  
+  
   
 # ------------------------------------------------------------------  
-# Public check  
+# Public check (AIA layer)  
 # ------------------------------------------------------------------  
   
   
-def run_cryptographic_binding_checks(pdf_bytes: bytes) -> List[Finding]:  
+def run_cryptographic_binding_checks(  
+    *,  
+    document_content: Optional[dict],  
+    bindings: Optional[dict],  
+) -> List[Finding]:  
     """  
-    Verify cryptographic binding between the embedded semantic payload and  
-    the claimed semantic hash declared in document metadata.  
+    Verify cryptographic binding between the Document Content payload  
+    and declared integrity bindings.  
+  
+    INPUTS:  
+    - document_content: authoritative Document Content (dict)  
+    - bindings: declared integrity metadata (dict)  
+  
+    RETURNS:  
+    - List of deterministic AIA findings  
     """  
+  
     findings: List[Finding] = []  
   
     # --------------------------------------------------------------  
-    # Extract embedded payload (authoritative source)  
+    # Preconditions (AIA invariants)  
     # --------------------------------------------------------------  
-    payload_bytes = extract_embedded_payload(pdf_bytes)  
   
-    if payload_bytes is None:  
+    if document_content is None:  
         findings.append(  
             Finding(  
-                finding_id="AIA-CRIT-010",  
+                finding_id="AIA-CRIT-030",  
                 source=FindingSource.ARTIFACT_INTEGRITY,  
                 category=FindingCategory.STRUCTURE,  
                 severity=Severity.CRITICAL,  
                 confidence=ConfidenceLevel.HIGH,  
                 status=FindingStatus.OPEN,  
-                title="Embedded payload unavailable for binding",  
+                title="Document Content payload missing for cryptographic binding",  
                 description=(  
-                    "The embedded machine-readable payload could not be "  
-                    "extracted. Cryptographic binding verification cannot "  
+                    "Cryptographic binding verification was invoked without "  
+                    "an extracted Document Content payload."  
+                ),  
+                why_it_matters=(  
+                    "Without Document Content, integrity verification cannot "  
                     "be performed."  
                 ),  
-                why_it_matters=(  
-                    "Without access to the embedded payload, it is impossible "  
-                    "to verify that the document is cryptographically bound "  
-                    "to its declared machine-readable data."  
-                ),  
             )  
         )  
         return findings  
   
-    # --------------------------------------------------------------  
-    # Canonicalize embedded payload  
-    # --------------------------------------------------------------  
-    canonical_payload = _canonicalize_json(payload_bytes)  
-  
-    if canonical_payload is None:  
+    if bindings is None:  
         findings.append(  
             Finding(  
-                finding_id="AIA-CRIT-011",  
+                finding_id="AIA-CRIT-031",  
                 source=FindingSource.ARTIFACT_INTEGRITY,  
-                category=FindingCategory.COMPLIANCE,  
+                category=FindingCategory.STRUCTURE,  
                 severity=Severity.CRITICAL,  
                 confidence=ConfidenceLevel.HIGH,  
                 status=FindingStatus.OPEN,  
-                title="Embedded payload canonicalization failed",  
+                title="Bindings missing for cryptographic verification",  
                 description=(  
-                    "The embedded payload could not be deterministically "  
-                    "canonicalized. Cryptographic verification cannot be "  
-                    "performed."  
-                ),  
-                why_it_matters=(  
-                    "Deterministic canonicalization is required to compute a "  
-                    "stable semantic hash. Failure here prevents integrity "  
+                    "No bindings object was provided for cryptographic "  
                     "verification."  
                 ),  
-            )  
-        )  
-        return findings  
-  
-    # --------------------------------------------------------------  
-    # Compute semantic hash  
-    # --------------------------------------------------------------  
-    computed_hash = _compute_sha256(canonical_payload)  
-  
-    # --------------------------------------------------------------  
-    # Extract claimed semantic hash from metadata  
-    # --------------------------------------------------------------  
-    claimed_hash = _extract_claimed_hash_from_xmp(pdf_bytes)  
-  
-    if claimed_hash is None:  
-        findings.append(  
-            Finding(  
-                finding_id="AIA-MAJ-012",  
-                source=FindingSource.ARTIFACT_INTEGRITY,  
-                category=FindingCategory.COMPLIANCE,  
-                severity=Severity.MAJOR,  
-                confidence=ConfidenceLevel.HIGH,  
-                status=FindingStatus.OPEN,  
-                title="Claimed semantic hash missing from metadata",  
-                description=(  
-                    "The document does not declare a claimed semantic hash "  
-                    "in its XMP metadata."  
-                ),  
                 why_it_matters=(  
-                    "Without a declared semantic hash, cryptographic binding "  
-                    "between the document and its embedded payload cannot be "  
-                    "verified."  
+                    "Bindings are required to establish cryptographic "  
+                    "integrity of Document Content."  
                 ),  
             )  
         )  
         return findings  
   
-    # --------------------------------------------------------------  
-    # Compare hashes  
-    # --------------------------------------------------------------  
-    if claimed_hash.lower() != computed_hash.lower():  
+    claimed_raw = bindings.get("content_hash")  
+  
+    if not isinstance(claimed_raw, str) or not claimed_raw.strip():  
         findings.append(  
             Finding(  
-                finding_id="AIA-CRIT-013",  
+                finding_id="AIA-CRIT-032",  
                 source=FindingSource.ARTIFACT_INTEGRITY,  
                 category=FindingCategory.COMPLIANCE,  
                 severity=Severity.CRITICAL,  
                 confidence=ConfidenceLevel.HIGH,  
                 status=FindingStatus.OPEN,  
-                title="Semantic hash mismatch",  
+                title="Declared content hash missing or invalid",  
                 description=(  
-                    "The computed semantic hash does not match the claimed "  
-                    "semantic hash declared in metadata."  
+                    "The bindings object does not contain a valid "  
+                    "'content_hash' value."  
                 ),  
                 why_it_matters=(  
-                    "A hash mismatch indicates divergence between the document’s "  
-                    "embedded data and its declared cryptographic binding, "  
-                    "invalidating semantic integrity."  
+                    "Without a declared content hash, Document Content "  
+                    "integrity cannot be cryptographically verified."  
+                ),  
+            )  
+        )  
+        return findings  
+  
+    parsed = _parse_content_hash(claimed_raw)  
+  
+    if parsed is None:  
+        findings.append(  
+            Finding(  
+                finding_id="AIA-CRIT-035",  
+                source=FindingSource.ARTIFACT_INTEGRITY,  
+                category=FindingCategory.COMPLIANCE,  
+                severity=Severity.CRITICAL,  
+                confidence=ConfidenceLevel.HIGH,  
+                status=FindingStatus.OPEN,  
+                title="Declared content hash format invalid",  
+                description=(  
+                    "The declared content_hash is not in a supported format "  
+                    "or specifies an unsupported algorithm."  
+                ),  
+                why_it_matters=(  
+                    "An invalid or ambiguous hash declaration prevents "  
+                    "deterministic integrity verification."  
+                ),  
+            )  
+        )  
+        return findings  
+  
+    _, claimed_digest = parsed  
+  
+    # --------------------------------------------------------------  
+    # Canonicalize Document Content  
+    # --------------------------------------------------------------  
+  
+    canonical = _canonicalize_content_payload(document_content)  
+  
+    if canonical is None:  
+        findings.append(  
+            Finding(  
+                finding_id="AIA-CRIT-033",  
+                source=FindingSource.ARTIFACT_INTEGRITY,  
+                category=FindingCategory.COMPLIANCE,  
+                severity=Severity.CRITICAL,  
+                confidence=ConfidenceLevel.HIGH,  
+                status=FindingStatus.OPEN,  
+                title="Document Content canonicalization failed",  
+                description=(  
+                    "The Document Content payload could not be "  
+                    "deterministically canonicalized."  
+                ),  
+                why_it_matters=(  
+                    "Deterministic canonicalization is required to compute "  
+                    "a stable content hash."  
+                ),  
+            )  
+        )  
+        return findings  
+  
+    # --------------------------------------------------------------  
+    # Compute and compare hash  
+    # --------------------------------------------------------------  
+  
+    computed_digest = _compute_sha256(canonical)  
+  
+    if claimed_digest != computed_digest:  
+        findings.append(  
+            Finding(  
+                finding_id="AIA-CRIT-034",  
+                source=FindingSource.ARTIFACT_INTEGRITY,  
+                category=FindingCategory.COMPLIANCE,  
+                severity=Severity.CRITICAL,  
+                confidence=ConfidenceLevel.HIGH,  
+                status=FindingStatus.OPEN,  
+                title="Content hash mismatch",  
+                description=(  
+                    "The computed content hash does not match the declared "  
+                    "content_hash in bindings."  
+                ),  
+                why_it_matters=(  
+                    "A hash mismatch indicates divergence between the "  
+                    "document’s Document Content and its declared integrity "  
+                    "binding, invalidating content integrity."  
                 ),  
             )  
         )  

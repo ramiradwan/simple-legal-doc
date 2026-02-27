@@ -57,7 +57,7 @@ class LDVPPass6Completeness(
         saw_token_metrics = False  
   
         chunks: List[SemanticChunk] = self._chunker.chunk(  
-            embedded_text=context.embedded_text,  
+            content_derived_text=context.content_derived_text,  
             visible_text=context.visible_text,  
         )  
   

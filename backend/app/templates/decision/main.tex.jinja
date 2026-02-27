@@ -5,14 +5,22 @@
 \begin{document}  
   
 % ------------------------------------------------------------------  
-% PDF/A-3 META ATTACHMENTS  
-% (machine-readable, not part of document content)  
+% PDF/A-3 META ATTACHMENTS — ASSOCIATED FILES  
 % ------------------------------------------------------------------  
+  
+% Authoritative canonical Document Content  
 \EmbedMetaAttachment  
-  {semantic-payload.json}  
-  {Canonical semantic payload used to generate this document}  
+  {content.json}  
+  {Canonical Document Content used to generate this document}  
   {application/json}  
   {Data}  
+  
+% Supplemental bindings metadata  
+\EmbedMetaAttachment  
+  {bindings.json}  
+  {Document Content integrity bindings and generation metadata}  
+  {application/json}  
+  {Supplement}  
   
 \BLOCK{ include "decision/layout.tex.jinja" }  
   

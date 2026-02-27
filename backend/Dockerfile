@@ -42,6 +42,7 @@ RUN apt-get update \
     python3-venv \  
     xz-utils \  
     ghostscript \  
+    icc-profiles-free \  
     poppler-utils \  
     openssl \  
  && apt-get clean \  

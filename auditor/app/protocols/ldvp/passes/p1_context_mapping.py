@@ -60,7 +60,7 @@ class LDVPPass1Context(
         # --------------------------------------------------------------  
         # Deterministic ingestion (authoritative, local only)  
         # --------------------------------------------------------------  
-        sliced_text = self._slicer.slice(context.embedded_text)  
+        sliced_text = self._slicer.slice(context.content_derived_text)  
   
         execution = await self._executor.execute(  
             prompt=self._prompt,  

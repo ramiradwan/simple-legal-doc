@@ -1,23 +1,39 @@
 """  
 LaTeX rendering service.  
   
-This module is responsible for transforming validated semantic payloads  
+This module is responsible for transforming validated **Document Content**  
 into a visually rendered PDF using LuaLaTeX.  
   
 Design guarantees:  
 - Deterministic template rendering (Jinja2 + StrictUndefined)  
 - No shell escape or external execution  
 - Compilation halted on LaTeX errors  
-- No semantic transformation occurs in this module  
+- No Document Content transformation occurs in this module  
+  
+RENDERING CONTRACT (ENFORCED):  
+  
+Callers MUST supply:  
+- document_content:  
+    Pure, validated Document Content supplied by the client.  
+- bindings:  
+    Engine-generated, non-authoritative presentation metadata  
+    (e.g. declared content hash, generation mode).  
+  
+Rendering without bindings is intentionally unsupported.  
+  
+Trust boundary:  
+- This module is presentation-only.  
+- Canonicalization, hashing, archival normalization, and cryptographic  
+  sealing occur strictly outside this module.  
 """  
   
 import os  
 import subprocess  
-import tempfile  
 from pathlib import Path  
 from typing import Any, Dict  
   
 from jinja2 import Environment, FileSystemLoader, StrictUndefined  
+  
   
 TEMPLATE_ROOT = Path(  
     os.environ.get("TEMPLATE_DIR", "templates")  
@@ -34,7 +50,8 @@ class LaTeXCompilationError(RuntimeError):
 def render_and_compile_pdf_to_path(  
     *,  
     template_path: str,  
-    semantic_payload: Dict[str, Any],  
+    document_content: Dict[str, Any],  
+    bindings: Dict[str, Any],  
     outdir: Path,  
 ) -> Path:  
     """  
@@ -43,11 +60,14 @@ def render_and_compile_pdf_to_path(
     The rendered PDF is written into ``outdir`` and the path to the PDF  
     artifact is returned.  
   
-    IMPORTANT:  
-    - This function performs rendering only.  
-    - Canonicalization, hashing, and signing occur elsewhere.  
+    IMPORTANT INVARIANTS:  
+    - Document Content is passed through verbatim.  
+    - Bindings are injected strictly for presentation.  
+    - Bindings MUST NOT override Document Content fields.  
+    - Canonicalization, hashing, normalization, and signing occur elsewhere.  
     - On failure, a LaTeXCompilationError is raised.  
     """  
+  
     # ------------------------------------------------------------------  
     # Jinja template rendering (deterministic)  
     # ------------------------------------------------------------------  
@@ -64,7 +84,21 @@ def render_and_compile_pdf_to_path(
     )  
   
     template = env.get_template(template_path)  
-    rendered_tex = template.render(semantic_payload)  
+  
+    # ------------------------------------------------------------------  
+    # Render context construction (presentation-only)  
+    # ------------------------------------------------------------------  
+    render_context: Dict[str, Any] = dict(document_content)  
+  
+    for key, value in bindings.items():  
+        if key in render_context:  
+            raise LaTeXCompilationError(  
+                f"Render context collision on key '{key}'. "  
+                "Bindings must not override Document Content fields."  
+            )  
+        render_context[key] = value  
+  
+    rendered_tex = template.render(render_context)  
   
     tex_file = outdir / "document.tex"  
     tex_file.write_text(rendered_tex, encoding="utf-8")  
@@ -121,25 +155,3 @@ def render_and_compile_pdf_to_path(
         )  
   
     return pdf_file  
-  
-  
-# ---------------------------------------------------------------------  
-# Backwards-compatible convenience wrapper  
-# ---------------------------------------------------------------------  
-def render_and_compile_pdf(  
-    template_path: str,  
-    semantic_payload: Dict[str, Any],  
-) -> bytes:  
-    """  
-    Render and compile a LaTeX template, returning the PDF bytes directly.  
-  
-    This is a convenience wrapper around ``render_and_compile_pdf_to_path``  
-    intended for legacy or simplified usage.  
-    """  
-    with tempfile.TemporaryDirectory() as tmp:  
-        pdf_path = render_and_compile_pdf_to_path(  
-            template_path=template_path,  
-            semantic_payload=semantic_payload,  
-            outdir=Path(tmp),  
-        )  
-        return pdf_path.read_bytes()  

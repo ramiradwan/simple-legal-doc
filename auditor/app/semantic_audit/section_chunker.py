@@ -5,21 +5,23 @@ from typing import List
   
 from .semantic_chunker import SemanticChunk, SemanticChunker  
   
-# Improved regex: 
-# Case 1: Explicitly labeled (e.g., "Section 2", "Article 1.1")
-# Case 2: Numbered with text (e.g., "1. Definitions"). Requires a letter to avoid "1.0"
+# Improved regex:  
+# Case 1: Explicitly labeled (e.g., "Section 2", "Article 1.1")  
+# Case 2: Numbered with text (e.g., "1. Definitions").  
+# Requires a letter to avoid "1.0"  
 SECTION_HEADER_RE = re.compile(  
     r"""  
     ^  
     (?P<header>  
-        ((Article|ARTICLE|Section|SECTION|§)\s*\d+(\.\d+)*[^\n]{0,80})
-        |
-        (\d+(\.\d+)*[\.\:\-\s]+[A-Za-z][^\n]{0,80})
+        ((Article|ARTICLE|Section|SECTION|§)\s*\d+(\.\d+)*[^\n]{0,80})  
+        |  
+        (\d+(\.\d+)*[\.\:\-\s]+[A-Za-z][^\n]{0,80})  
     )  
     $  
     """,  
     re.VERBOSE,  
 )  
+  
   
 class SectionBasedSemanticChunker:  
     """  
@@ -30,23 +32,29 @@ class SectionBasedSemanticChunker:
     - Stable IDs  
     - No NLP / ML  
     """  
-    
-    # Chunks smaller than this are merged into the previous chunk
-    # to avoid sending "micro-chunks" to the LLM which trigger false stops.
-    MIN_CHUNK_CHARS = 50
-
-    def chunk(self, *, embedded_text: str, visible_text: str) -> List[SemanticChunk]:  
-        lines = embedded_text.splitlines()  
+  
+    # Chunks smaller than this are merged into the previous chunk  
+    # to avoid sending "micro-chunks" to the LLM which trigger false stops.  
+    MIN_CHUNK_CHARS = 50  
+  
+    def chunk(  
+        self,  
+        *,  
+        content_derived_text: str,  
+        visible_text: str,  
+    ) -> List[SemanticChunk]:  
+        lines = content_derived_text.splitlines()  
   
         raw_chunks: List[SemanticChunk] = []  
         current_header = "§0"  
         buffer: List[str] = []  
   
-        def flush():  
+        def flush() -> None:  
             if not buffer:  
                 return  
-            text = "\n".join(buffer).strip()
-            if text:
+  
+            text = "\n".join(buffer).strip()  
+            if text:  
                 raw_chunks.append(  
                     SemanticChunk(  
                         chunk_id=current_header,  
@@ -68,32 +76,33 @@ class SectionBasedSemanticChunker:
   
         flush()  
   
-        # --------------------------------------------------------------
-        # Post-processing: Merge micro-chunks
-        # --------------------------------------------------------------
-        merged_chunks: List[SemanticChunk] = []
-        for c in raw_chunks:
-            if not merged_chunks:
-                merged_chunks.append(c)
-            else:
-                if len(c.text) < self.MIN_CHUNK_CHARS:
-                    prev = merged_chunks.pop()
-                    merged_chunks.append(
-                        SemanticChunk(
-                            chunk_id=prev.chunk_id,
-                            text=prev.text + "\n" + c.text
-                        )
-                    )
-                else:
-                    merged_chunks.append(c)
-
+        # --------------------------------------------------------------  
+        # Post-processing: Merge micro-chunks  
+        # --------------------------------------------------------------  
+        merged_chunks: List[SemanticChunk] = []  
+  
+        for c in raw_chunks:  
+            if not merged_chunks:  
+                merged_chunks.append(c)  
+            else:  
+                if len(c.text) < self.MIN_CHUNK_CHARS:  
+                    prev = merged_chunks.pop()  
+                    merged_chunks.append(  
+                        SemanticChunk(  
+                            chunk_id=prev.chunk_id,  
+                            text=prev.text + "\n" + c.text,  
+                        )  
+                    )  
+                else:  
+                    merged_chunks.append(c)  
+  
         # Fallback: never return empty  
         if not merged_chunks:  
             return [  
                 SemanticChunk(  
                     chunk_id="§0",  
-                    text=embedded_text.strip(),  
+                    text=content_derived_text.strip(),  
                 )  
             ]  
   
-        return merged_chunks
+        return merged_chunks  

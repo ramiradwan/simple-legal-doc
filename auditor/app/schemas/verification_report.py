@@ -22,6 +22,7 @@ from typing import List, Optional, Dict
 from pydantic import BaseModel, Field, model_validator  
 from pydantic import ConfigDict  
   
+  
 # ---------------------------------------------------------------------------  
 # Canonical Finding Import (AUTHORITATIVE)  
 # ---------------------------------------------------------------------------  
@@ -55,7 +56,6 @@ class DeliveryRecommendation(str, Enum):
     """  
   
     READY = "ready"  
-    READY_WITH_CAVEATS = "ready_with_caveats"  
     NOT_READY = "not_ready"  
     EXPERT_REVIEW_REQUIRED = "expert_review_required"  
   
@@ -92,19 +92,19 @@ class ArtifactIntegrityResult(BaseModel):
     # Authoritative extracted signals (ONLY present if passed == True)  
     # ------------------------------------------------------------------  
   
-    embedded_payload: Optional[Dict] = Field(  
+    document_content: Optional[Dict] = Field(  
         None,  
         description=(  
-            "Authoritative machine-readable payload embedded in the PDF "  
-            "via PDF/A-3 associated files."  
+            "Authoritative machine-readable Document Content extracted "  
+            "from the PDF via PDF/A-3 associated files."  
         ),  
     )  
   
-    embedded_text: Optional[str] = Field(  
+    content_derived_text: Optional[str] = Field(  
         None,  
         description=(  
-            "Deterministic textual projection of the embedded payload. "  
-            "Derived solely from embedded data; not from visible content."  
+            "Deterministic textual projection derived solely from the "  
+            "Document Content. Not derived from visible page content."  
         ),  
     )  
   
@@ -126,16 +126,17 @@ class ArtifactIntegrityResult(BaseModel):
         Enforce Artifact Integrity invariants:  
   
         - If integrity PASSED:  
-            * embedded_payload MUST be present  
-            * embedded_text MUST be present  
+            * document_content MUST be present  
+            * content_derived_text MUST be present  
             * visible_text MUST be present  
+  
         - If integrity FAILED:  
             * none of the above may be present  
         """  
         if self.passed:  
             if (  
-                self.embedded_payload is None  
-                or self.embedded_text is None  
+                self.document_content is None  
+                or self.content_derived_text is None  
                 or self.visible_text is None  
             ):  
                 raise ValueError(  
@@ -146,8 +147,8 @@ class ArtifactIntegrityResult(BaseModel):
             if any(  
                 v is not None  
                 for v in (  
-                    self.embedded_payload,  
-                    self.embedded_text,  
+                    self.document_content,  
+                    self.content_derived_text,  
                     self.visible_text,  
                 )  
             ):  
@@ -165,8 +166,7 @@ class SealTrustResult(BaseModel):
     """  
     Result of cryptographic seal and signature verification.  
   
-    This is evaluated independently of document semantics  
-    and content quality.  
+    This is evaluated independently of document content.  
     """  
   
     executed: bool = Field(  
@@ -183,6 +183,37 @@ class SealTrustResult(BaseModel):
         default_factory=list,  
         description="Seal and signature related findings",  
     )  
+  
+    resolved_aia_finding_ids: List[str] = Field(  
+        default_factory=list,  
+        description=(  
+            "IDs of AIA findings that STV has cryptographically resolved. "  
+            "Only populated when trusted=True."  
+        ),  
+    )  
+  
+    @model_validator(mode="after")  
+    def enforce_stv_invariants(self):  
+        if not self.executed:  
+            if self.trusted is not None:  
+                raise ValueError(  
+                    "trusted must be None when STV is not executed"  
+                )  
+            if self.resolved_aia_finding_ids:  
+                raise ValueError(  
+                    "resolved_aia_finding_ids must be empty when STV is not executed"  
+                )  
+        else:  
+            if self.trusted is None:  
+                raise ValueError(  
+                    "trusted must be set when STV is executed"  
+                )  
+            if self.trusted is False and self.resolved_aia_finding_ids:  
+                raise ValueError(  
+                    "resolved_aia_finding_ids must be empty when STV failed"  
+                )  
+  
+        return self  
   
     model_config = ConfigDict(frozen=True)  
   
@@ -208,7 +239,7 @@ class VerificationReport(BaseModel):
     """  
   
     schema_version: str = Field(  
-        "1.3",  
+        "1.4",  
         description="VerificationReport schema version",  
     )  
   

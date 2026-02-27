@@ -67,8 +67,8 @@
 \renewcommand{\headrulewidth}{0pt} 
 \fancyfoot[L]{\sffamily\scriptsize\color{brandgray} Generated with \textbf{simple-legal-doc}}
 \fancyfoot[C]{\sffamily\scriptsize\color{brandgray}%
-\BLOCK{ if document_hash }%
-Document SHA-256: \detokenize{\VAR{document_hash.replace('SHA-256: ', '').replace('SHA-256:', '')[:8]}}%
+\BLOCK{ if content_hash }%
+Document SHA-256: \detokenize{\VAR{content_hash.replace('SHA-256: ', '').replace('SHA-256:', '')[:8]}}%
 \BLOCK{ else }%
 PENDING SIGNATURE%
 \BLOCK{ endif }%
@@ -83,8 +83,8 @@ PENDING SIGNATURE%
 \newcommand{\DocDate}{\VAR{doc_date}}  
 
 \newcommand{\DocHash}{%
-\BLOCK{ if document_hash }%
-\detokenize{\VAR{document_hash.replace('SHA-256: ', '').replace('SHA-256:', '')}}%
+\BLOCK{ if content_hash }%
+\detokenize{\VAR{content_hash.replace('SHA-256: ', '').replace('SHA-256:', '')}}%
 \BLOCK{ else }%
 PENDING SIGNATURE%
 \BLOCK{ endif }%

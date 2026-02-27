@@ -32,8 +32,8 @@ async def _run_and_collect_events():
     )
 
     await pipeline.run(
-        embedded_text="Stable short document text.",
-        embedded_payload={"schema_version": "1.0"},
+        content_derived_text="Stable short document text.",
+        document_content={"schema_version": "1.0"},
         visible_text="Visible text",
         audit_id="audit-events-001",
         emitter=emitter,  # ✅ correct place

@@ -3,15 +3,15 @@ from auditor.app.checks.artifact.cryptographic_binding import (
 )  
 from auditor.app.schemas.findings import Severity  
   
-from auditor.tests.fixtures.pdf_factory import minimal_valid_pdf  
   
-  
-def test_fails_when_semantic_payload_missing():  
-    pdf_bytes = minimal_valid_pdf()  
-    findings = run_cryptographic_binding_checks(pdf_bytes)  
+def test_fails_when_document_content_missing():  
+    findings = run_cryptographic_binding_checks(  
+        document_content=None,  
+        bindings={},  
+    )  
   
     assert any(  
-        f.finding_id == "AIA-CRIT-010"  
+        f.finding_id == "AIA-CRIT-030"  
         and f.severity == Severity.CRITICAL  
         for f in findings  
     )  

@@ -22,24 +22,34 @@ class SemanticAuditContext(BaseModel):
     # ------------------------------------------------------------------  
     # Authoritative inputs (from Artifact Integrity Audit)  
     # ------------------------------------------------------------------  
-    embedded_text: str = Field(  
+  
+    content_derived_text: str = Field(  
         ...,  
-        description="Deterministic semantic text projection derived from embedded payload",  
+        description=(  
+            "Deterministic text projection derived from the authoritative "  
+            "Document Content embedded in the artifact."  
+        ),  
     )  
   
-    embedded_payload: Dict[str, Any] = Field(  
+    document_content: Dict[str, Any] = Field(  
         ...,  
-        description="Canonical machine-readable payload embedded in the artifact",  
+        description=(  
+            "Authoritative machine-readable Document Content extracted "  
+            "from PDF/A-3 associated files."  
+        ),  
     )  
   
     visible_text: str = Field(  
         ...,  
-        description="Human-visible document text extracted from PDF content streams",  
+        description=(  
+            "Human-visible document text extracted from PDF content streams."  
+        ),  
     )  
   
     # ------------------------------------------------------------------  
     # Execution metadata (NON-AUTHORITATIVE, OPTIONAL, DIAGNOSTIC ONLY)  
     # ------------------------------------------------------------------  
+  
     audit_id: Optional[str] = Field(  
         None,  
         description="Audit identifier (diagnostic only)",  
@@ -47,12 +57,12 @@ class SemanticAuditContext(BaseModel):
   
     protocol_id: Optional[str] = Field(  
         None,  
-        description="Semantic protocol identifier (e.g. 'LDVP')",  
+        description="Semantic audit protocol identifier (e.g. 'LDVP')",  
     )  
   
     protocol_version: Optional[str] = Field(  
         None,  
-        description="Semantic protocol version (e.g. '2.3')",  
+        description="Semantic audit protocol version (e.g. '2.3')",  
     )  
   
     model_name: Optional[str] = Field(  
@@ -76,6 +86,7 @@ class SemanticAuditContext(BaseModel):
     # ------------------------------------------------------------------  
     # Runtime-only plumbing (NOT model fields)  
     # ------------------------------------------------------------------  
+  
     _emitter: Optional[AuditEventEmitter] = PrivateAttr(default=None)  
   
     # Pipeline-owned execution state (read-only to passes)  
@@ -90,6 +101,7 @@ class SemanticAuditContext(BaseModel):
     # ------------------------------------------------------------------  
     # Convenience accessors (safe, read-only)  
     # ------------------------------------------------------------------  
+  
     @property  
     def emitter(self) -> Optional[AuditEventEmitter]:  
         return self._emitter  

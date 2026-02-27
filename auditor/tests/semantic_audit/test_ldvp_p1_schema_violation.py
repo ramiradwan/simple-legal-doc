@@ -45,8 +45,8 @@ class FakeArtifactIntegrityAudit(ArtifactIntegrityAudit):
             passed=True,  
             checks_executed=["fake_aia"],  
             findings=[],  
-            embedded_text=text,  
-            embedded_payload={"document_type": "test"},  
+            content_derived_text=text,  
+            document_content={"document_type": "test"},  
             visible_text=text,  
         )  
   

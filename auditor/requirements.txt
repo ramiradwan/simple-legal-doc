@@ -8,3 +8,6 @@ azure-identity
 azure-core  
 openai
 pypdf
+aiohttp
+pyhanko
+tzdata

@@ -64,8 +64,8 @@ class MockLLMExecutor(StructuredLLMExecutor):
         try:  
             prefix_material = json.dumps(  
                 {  
-                    "embedded_payload": context.embedded_payload,  
-                    "embedded_text": context.embedded_text,  
+                    "document_content": context.document_content,  
+                    "content_derived_text": context.content_derived_text,  
                 },  
                 sort_keys=True,  
                 ensure_ascii=False,  

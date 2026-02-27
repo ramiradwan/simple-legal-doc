@@ -14,7 +14,7 @@ class LDVPPassMixin:
   
     This mixin locks the following invariants:  
     - adapter construction is internal and deterministic  
-    - semantic payload anchoring is mandatory  
+    - Document Content anchoring is mandatory  
     - execution failures are advisory and adapted uniformly  
     - adapters are called ONLY per raw finding  
     - metadata normalization is owned exclusively by the adapter  
@@ -23,6 +23,7 @@ class LDVPPassMixin:
     # ------------------------------------------------------------------  
     # REQUIRED CLASS ATTRIBUTES (must be overridden)  
     # ------------------------------------------------------------------  
+  
     PROTOCOL_ID: str = "LDVP"  
     PASS_ID: str  
   
@@ -31,6 +32,7 @@ class LDVPPassMixin:
     # ------------------------------------------------------------------  
     # Adapter lifecycle  
     # ------------------------------------------------------------------  
+  
     def _init_ldvp_adapter(self) -> None:  
         """  
         Must be called exactly once by subclasses (typically in __init__).  
@@ -43,6 +45,7 @@ class LDVPPassMixin:
     # ------------------------------------------------------------------  
     # Canonical adaptation helpers  
     # ------------------------------------------------------------------  
+  
     def _adapt_execution_failure(  
         self,  
         *,  
@@ -69,7 +72,7 @@ class LDVPPassMixin:
         Adapt raw model findings into canonical FindingObjects.  
   
         Enforces:  
-        - semantic payload anchoring  
+        - Document Content anchoring  
         - deterministic sequencing  
         - optional location injection  
   
@@ -88,7 +91,7 @@ class LDVPPassMixin:
                     raw_finding=raw_finding,  
                     source=self.source,  
                     sequence=i,  
-                    semantic_payload=context.embedded_payload,  
+                    document_content=context.document_content,  
                 )  
             )  
   

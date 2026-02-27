@@ -188,8 +188,8 @@ async def generate_draft(slug: str, payload: dict) -> dict:
     when the content is approved and a sealed record is required.
 
     The returned localPath is an absolute path to the written PDF.
-    The returned semanticHash is the authoritative SHA-256 hash of the
-    canonical semantic payload, computed by the backend before rendering.
+    The returned contentHash is the authoritative SHA-256 hash of the
+    canonical Document Content, computed by the backend before rendering.
     This value is identical to the hash embedded inside the document.
 
     Args:
@@ -229,7 +229,7 @@ async def generate_draft(slug: str, payload: dict) -> dict:
         return {"error": "Document Engine unreachable"}
 
     pdf_bytes = response.content
-    semantic_hash = response.headers.get("X-Semantic-Hash", "missing_hash")
+    content_hash = response.headers.get("X-Content-Hash", "missing_hash")
     confirmed_mode = response.headers.get("X-Generation-Mode", "draft")
 
     try:
@@ -239,16 +239,16 @@ async def generate_draft(slug: str, payload: dict) -> dict:
         return {"error": f"Failed to write artifact: {exc}"}
 
     logger.info(
-        "generate_draft: wrote %d bytes to %s semantic_hash=%s",
+        "generate_draft: wrote %d bytes to %s content_hash=%s",
         len(pdf_bytes),
         artifact_path,
-        semantic_hash[:12],
+        content_hash[:12],
     )
 
     return {
         "localPath": str(artifact_path),
         "mode": confirmed_mode,
-        "semanticHash": semantic_hash,
+        "contentHash": content_hash,
     }
 
 
@@ -278,8 +278,8 @@ async def generate_final(slug: str, payload: dict, ctx: Context) -> dict:
     only when the content is approved and a final sealed record is needed.
 
     The returned localPath is an absolute path to the written PDF.
-    The returned semanticHash is the authoritative SHA-256 hash of the
-    canonical semantic payload, identical to the hash embedded and
+    The returned contentHash is the authoritative SHA-256 hash of the
+    canonical Document Content, identical to the hash embedded and
     rendered inside the sealed document.
     The returned paymentReceipt is present only when an x402 payment
     was processed; it is an immutable cryptographic settlement receipt.
@@ -351,7 +351,7 @@ async def generate_final(slug: str, payload: dict, ctx: Context) -> dict:
         return {"error": "Document Engine unreachable"}
 
     pdf_bytes = response.content
-    semantic_hash = response.headers.get("X-Semantic-Hash", "missing_hash")
+    content_hash = response.headers.get("X-Semantic-Hash", "missing_hash")
     confirmed_mode = response.headers.get("X-Generation-Mode", "final")
 
     try:
@@ -361,10 +361,10 @@ async def generate_final(slug: str, payload: dict, ctx: Context) -> dict:
         return {"error": f"Failed to write artifact: {exc}"}
 
     logger.info(
-        "generate_final: wrote %d bytes to %s semantic_hash=%s",
+        "generate_final: wrote %d bytes to %s content_hash=%s",
         len(pdf_bytes),
         artifact_path,
-        semantic_hash[:12],
+        content_hash[:12],
     )
 
     # Bookend progress — "complete".
@@ -373,7 +373,7 @@ async def generate_final(slug: str, payload: dict, ctx: Context) -> dict:
     result: dict = {
         "localPath": str(artifact_path),
         "mode": confirmed_mode,
-        "semanticHash": semantic_hash,
+        "contentHash": content_hash,
     }
     if payment_receipt:
         result["paymentReceipt"] = payment_receipt

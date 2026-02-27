@@ -32,6 +32,7 @@ from auditor.app.events import (
 # Structured Execution Result  
 # ----------------------------------------------------------------------  
   
+  
 class StructuredLLMExecutionResult(BaseModel):  
     """  
     Canonical result of a structured LLM execution.  
@@ -39,6 +40,7 @@ class StructuredLLMExecutionResult(BaseModel):
     This object is NON-AUTHORITATIVE and diagnostic-only.  
     It MUST never raise and MUST normalize all execution outcomes.  
     """  
+  
     success: bool  
     output: Optional[BaseModel] = None  
   
@@ -64,9 +66,11 @@ class StructuredLLMExecutionResult(BaseModel):
         extra="forbid",  
     )  
   
+  
 # ----------------------------------------------------------------------  
 # Executor Interface  
 # ----------------------------------------------------------------------  
+  
   
 class StructuredLLMExecutor(Protocol):  
     async def execute(  
@@ -81,9 +85,11 @@ class StructuredLLMExecutor(Protocol):
     ) -> StructuredLLMExecutionResult:  
         ...  
   
+  
 # ----------------------------------------------------------------------  
 # Azure OpenAI Structured Executor (Entra ID)  
 # ----------------------------------------------------------------------  
+  
   
 class AzureStructuredLLMExecutor:  
     """  
@@ -91,7 +97,7 @@ class AzureStructuredLLMExecutor:
   
     Enforces the LDVP 4-Layer Prompt Assembly Contract:  
       1. Authority Layer (System prompt, globally static)  
-      2. Data Layer (Canonical semantic snapshot, static per document)  
+      2. Data Layer (Canonical Document Content snapshot, static per document)  
       3. Task Layer (Pass-specific instructions)  
       4. Focus Layer (Optional semantic chunk under analysis)  
     """  
@@ -156,27 +162,27 @@ class AzureStructuredLLMExecutor:
   
         try:  
             # ------------------------------------------------------------------  
-            # Canonical semantic snapshot (cache-stable)  
+            # Canonical Document Content snapshot (cache-stable)  
             # ------------------------------------------------------------------  
             payload_json = json.dumps(  
-                context.embedded_payload,  
+                context.document_content,  
                 ensure_ascii=False,  
                 sort_keys=True,  
                 separators=(",", ":"),  
             )  
   
-            semantic_snapshot = (  
-                "--- BEGIN CANONICAL SEMANTIC SNAPSHOT ---\n\n"  
-                "STRUCTURED SEMANTIC PAYLOAD (CANONICAL JSON):\n"  
+            document_snapshot = (  
+                "--- BEGIN CANONICAL DOCUMENT CONTENT SNAPSHOT ---\n\n"  
+                "STRUCTURED DOCUMENT CONTENT (CANONICAL JSON):\n"  
                 f"{payload_json}\n\n"  
                 "DERIVED DOCUMENT TEXT (DETERMINISTIC PROJECTION):\n"  
-                f"{context.embedded_text}\n\n"  
-                "--- END CANONICAL SEMANTIC SNAPSHOT ---"  
+                f"{context.content_derived_text}\n\n"  
+                "--- END CANONICAL DOCUMENT CONTENT SNAPSHOT ---"  
             )  
   
             messages = [  
                 {"role": "system", "content": self._base_system_text},  
-                {"role": "user", "content": semantic_snapshot},  
+                {"role": "user", "content": document_snapshot},  
                 {"role": "user", "content": prompt.text},  
             ]  
   
@@ -216,7 +222,9 @@ class AzureStructuredLLMExecutor:
                 details = getattr(usage, "prompt_tokens_details", None)  
                 if details is not None:  
                     token_metrics["cached_tokens"] = getattr(  
-                        details, "cached_tokens", None  
+                        details,  
+                        "cached_tokens",  
+                        None,  
                     )  
   
             result = StructuredLLMExecutionResult(  

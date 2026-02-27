@@ -25,7 +25,7 @@ def make_finding(*, version="2.3", rule="R1", location="§5.2"):
         raw_finding=raw,  
         source=FindingSource.SEMANTIC_AUDIT,  
         sequence=1,  
-        semantic_payload=BASE_PAYLOAD,  
+        document_content=BASE_PAYLOAD,  
     )  
   
   

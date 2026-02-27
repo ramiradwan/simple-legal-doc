@@ -78,15 +78,3 @@ class ComplianceTestPayload(BaseModel):
             "the LDVP P5 Accuracy pass will flag these for human verification."
         ),
     )
-
-    # ------------------------------------------------------------------
-    # Engine-generated cryptographic metadata
-    # ------------------------------------------------------------------
-    document_hash: Optional[str] = Field(
-        default=None,
-        description=(
-            "Engine-generated cryptographic fingerprint of the document. "
-            "Must NOT be supplied by the client."
-        ),
-        json_schema_extra={"readOnly": True},
-    )

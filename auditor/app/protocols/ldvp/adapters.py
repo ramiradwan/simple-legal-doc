@@ -34,15 +34,15 @@ from auditor.app.schemas.findings import (
 # ----------------------------------------------------------------------  
   
   
-def _canonicalize_payload(payload: dict) -> str:  
+def _canonicalize_payload(document_content: dict) -> str:  
     """  
-    Canonicalize the embedded semantic payload for stable hashing.  
+    Canonicalize Document Content for stable hashing.  
   
-    This MUST match the payload extracted and frozen by  
+    This MUST match the content extracted and frozen by  
     Artifact Integrity Audit.  
     """  
     return json.dumps(  
-        payload,  
+        document_content,  
         sort_keys=True,  
         separators=(",", ":"),  
         ensure_ascii=False,  
@@ -103,7 +103,7 @@ class LDVPFindingAdapter(FindingAdapter):
         self._pass_id = pass_id  
   
     # ------------------------------------------------------------------  
-    # Semantic findings  
+    # Semantic findings (ADVISORY)  
     # ------------------------------------------------------------------  
   
     def adapt(  
@@ -112,7 +112,7 @@ class LDVPFindingAdapter(FindingAdapter):
         raw_finding: BaseModel,  
         source: FindingSource,  
         sequence: int,  
-        semantic_payload: dict,  
+        document_content: dict,  
     ) -> Finding:  
         """  
         Adapt a raw LDVP finding into a canonical FindingObject.  
@@ -124,15 +124,14 @@ class LDVPFindingAdapter(FindingAdapter):
         - rule_id (prompt-defined heuristic)  
         - finding category  
         - finding location (if any)  
-        - canonical embedded payload  
+        - canonical Document Content  
   
         LLM-generated text and execution order MUST NOT affect identity.  
         """  
   
         # ------------------------------------------------------------------  
-        # Required semantic fields  
+        # Required fields  
         # ------------------------------------------------------------------  
-  
         title: str = raw_finding.title  
         description: str = raw_finding.description  
         why_it_matters: str = raw_finding.why_it_matters  
@@ -140,12 +139,12 @@ class LDVPFindingAdapter(FindingAdapter):
         severity: Severity = raw_finding.severity  
         confidence: ConfidenceLevel = raw_finding.confidence  
         category: FindingCategory = raw_finding.category  
+  
         location = getattr(raw_finding, "location", None)  
   
         # ------------------------------------------------------------------  
         # rule_id (MANDATORY)  
         # ------------------------------------------------------------------  
-  
         rule_id = getattr(raw_finding, "rule_id", None)  
         if not rule_id:  
             raise ValueError(  
@@ -154,15 +153,13 @@ class LDVPFindingAdapter(FindingAdapter):
             )  
   
         # ------------------------------------------------------------------  
-        # Canonical payload  
+        # Canonical Document Content  
         # ------------------------------------------------------------------  
-  
-        canonical_payload = _canonicalize_payload(semantic_payload)  
+        canonical_payload = _canonicalize_payload(document_content)  
   
         # ------------------------------------------------------------------  
         # Stable identity material (AUTHORITATIVE)  
         # ------------------------------------------------------------------  
-  
         hash_material = "|".join(  
             [  
                 self._protocol_id,  
@@ -186,11 +183,9 @@ class LDVPFindingAdapter(FindingAdapter):
         # ------------------------------------------------------------------  
         # Metadata (DICT ONLY – rehydrated by FindingObject)  
         # ------------------------------------------------------------------  
-  
-        metadata = _normalize_metadata(  
-            getattr(raw_finding, "metadata", None)  
-        ) or {}  
-  
+        metadata = (  
+            _normalize_metadata(getattr(raw_finding, "metadata", None)) or {}  
+        )  
         metadata["rule_id"] = rule_id  
   
         return Finding(  
@@ -272,7 +267,6 @@ class LDVPFindingAdapter(FindingAdapter):
   
         suffix = _stable_finding_suffix(hash_material)  
   
-        # sequence intentionally excluded from identity  
         finding_id = (  
             f"{self._protocol_id}-{self._pass_id}-"  
             f"EXECUTION-{suffix}"  

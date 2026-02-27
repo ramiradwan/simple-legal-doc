@@ -12,6 +12,7 @@ outcomes in non-deterministic ways.
 from __future__ import annotations  
   
 import os  
+from pathlib import Path  
 from pydantic import BaseModel, Field, field_validator, ValidationInfo  
   
   
@@ -48,6 +49,20 @@ class AuditorConfig(BaseModel):
     ENABLE_SEAL_TRUST_VERIFICATION: bool = Field(  
         False,  
         description="Enable cryptographic seal trust verification",  
+    )  
+  
+    # ------------------------------------------------------------------  
+    # Cryptographic trust configuration (STV)  
+    # ------------------------------------------------------------------  
+  
+    TRUST_ROOT_CERT_PATH: Path | None = Field(  
+        None,  
+        description=(  
+            "Path to the PEM- or DER-encoded trust root certificate used for "  
+            "Seal Trust Verification (STV). Required if "  
+            "ENABLE_SEAL_TRUST_VERIFICATION is true. "  
+            "The Auditor does not consult the system trust store."  
+        ),  
     )  
   
     # ------------------------------------------------------------------  
@@ -148,6 +163,27 @@ class AuditorConfig(BaseModel):
             )  
         return v  
   
+    @field_validator("TRUST_ROOT_CERT_PATH")  
+    @classmethod  
+    def trust_root_required_if_stv_enabled(  
+        cls, v: Path | None, info: ValidationInfo  
+    ) -> Path | None:  
+        if info.data.get("ENABLE_SEAL_TRUST_VERIFICATION"):  
+            if v is None:  
+                raise ValueError(  
+                    "ENABLE_SEAL_TRUST_VERIFICATION is true but "  
+                    "TRUST_ROOT_CERT_PATH is not configured."  
+                )  
+            if not v.exists():  
+                raise ValueError(  
+                    f"Configured TRUST_ROOT_CERT_PATH does not exist: {v}"  
+                )  
+            if not v.is_file():  
+                raise ValueError(  
+                    f"Configured TRUST_ROOT_CERT_PATH is not a file: {v}"  
+                )  
+        return v  
+  
     # ------------------------------------------------------------------  
     # Construction  
     # ------------------------------------------------------------------  
@@ -166,6 +202,8 @@ class AuditorConfig(BaseModel):
                 return default  
             return raw.lower() in {"1", "true", "yes", "on"}  
   
+        trust_root_env = os.getenv("AUDITOR_TRUST_ROOT_CERT_PATH")  
+  
         return cls(  
             ENABLE_ARTIFACT_INTEGRITY_AUDIT=env_bool(  
                 "AUDITOR_ENABLE_ARTIFACT_INTEGRITY_AUDIT", True  
@@ -178,6 +216,11 @@ class AuditorConfig(BaseModel):
             ),  
             ENABLE_SEAL_TRUST_VERIFICATION=env_bool(  
                 "AUDITOR_ENABLE_SEAL_TRUST_VERIFICATION", False  
+            ),  
+            TRUST_ROOT_CERT_PATH=(  
+                Path(trust_root_env)  
+                if trust_root_env  
+                else None  
             ),  
             MAX_PDF_SIZE_MB=int(  
                 os.getenv("AUDITOR_MAX_PDF_SIZE_MB", "25")  

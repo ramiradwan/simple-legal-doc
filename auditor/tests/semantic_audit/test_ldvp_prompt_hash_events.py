@@ -23,8 +23,8 @@ def test_prompt_hash_emitted_without_raw_prompt():
         )  
   
         await pipeline.run(  
-            embedded_text="Document text.",  
-            embedded_payload={"schema_version": "1.0"},  
+            content_derived_text="Document text.",  
+            document_content={"schema_version": "1.0"},  
             visible_text="Visible text",  
             audit_id="audit-hash-001",  
         )  

@@ -28,7 +28,7 @@ def test_p6_does_not_execute_on_header_only_chunks():
         p6._chunker = mock_chunker  
   
         context = Mock()  
-        context.embedded_text = header_chunk.text  
+        context.content_derived_text = header_chunk.text  
         context.visible_text = header_chunk.text  
         context.audit_id = None  
         context.emitter = None  

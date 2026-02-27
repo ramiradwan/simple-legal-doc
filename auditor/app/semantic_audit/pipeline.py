@@ -61,11 +61,12 @@ class SemanticAuditPipeline:
     # ------------------------------------------------------------------  
     # Public API  
     # ------------------------------------------------------------------  
+  
     async def run(  
         self,  
         *,  
-        embedded_text: str,  
-        embedded_payload: dict,  
+        content_derived_text: str,  
+        document_content: dict,  
         visible_text: str,  
         audit_id: Optional[str] = None,  
         emitter: Optional[AuditEventEmitter] = None,  
@@ -80,15 +81,14 @@ class SemanticAuditPipeline:
           or seal verification  
         - Remaining passes are recorded as executed=False  
         """  
-  
         emitter = emitter or NullEventEmitter()  
   
         # ------------------------------------------------------------------  
         # Construct immutable semantic context  
         # ------------------------------------------------------------------  
         context = SemanticAuditContext(  
-            embedded_text=embedded_text,  
-            embedded_payload=embedded_payload,  
+            content_derived_text=content_derived_text,  
+            document_content=document_content,  
             visible_text=visible_text,  
             audit_id=audit_id,  
             protocol_id=self.protocol_id,  
@@ -98,9 +98,9 @@ class SemanticAuditPipeline:
         # ------------------------------------------------------------------  
         # Runtime-only plumbing (non-authoritative)  
         # ------------------------------------------------------------------  
-        context._emitter = emitter  
-        context._all_findings = []  
-        context._executed_pass_ids = []  
+        context._emitter = emitter  # type: ignore[attr-defined]  
+        context._all_findings = []  # type: ignore[attr-defined]  
+        context._executed_pass_ids = []  # type: ignore[attr-defined]  
   
         pass_results: List[SemanticAuditPassResult] = []  
         stop_requested = False  
@@ -141,9 +141,9 @@ class SemanticAuditPipeline:
             result = await audit_pass.run(context)  
   
             pass_results.append(result)  
-            context._executed_pass_ids.append(audit_pass.pass_id)  
-            context._all_findings.extend(result.findings)  
-
+            context._executed_pass_ids.append(audit_pass.pass_id)  # type: ignore[attr-defined]  
+            context._all_findings.extend(result.findings)  # type: ignore[attr-defined]  
+  
             # --------------------------------------------------------------  
             # Stream findings in real-time (observational)  
             # --------------------------------------------------------------  
@@ -151,11 +151,12 @@ class SemanticAuditPipeline:
                 for finding in result.findings:  
                     metadata = finding.metadata  
                     rule_id = None  
+  
                     if isinstance(metadata, dict):  
                         rule_id = metadata.get("rule_id")  
                     elif metadata is not None:  
                         rule_id = getattr(metadata, "rule_id", None)  
-
+  
                     await emitter.emit(  
                         AuditEvent(  
                             audit_id=audit_id,  
@@ -164,7 +165,11 @@ class SemanticAuditPipeline:
                                 "pass_id": audit_pass.pass_id,  
                                 "finding_id": finding.finding_id,  
                                 "rule_id": rule_id,  
-                                "severity": getattr(finding.severity, "value", str(finding.severity)),  
+                                "severity": getattr(  
+                                    finding.severity,  
+                                    "value",  
+                                    str(finding.severity),  
+                                ),  
                                 "title": finding.title,  
                             },  
                         )  
@@ -211,4 +216,4 @@ class SemanticAuditPipeline:
             protocol_version=self.protocol_version,  
             pass_results=pass_results,  
             findings=context.all_findings(),  
-        )
+        )  

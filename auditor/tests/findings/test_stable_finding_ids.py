@@ -14,7 +14,7 @@ from auditor.app.schemas.findings import (
 # Test helpers  
 # ---------------------------------------------------------------------------  
   
-def _base_semantic_payload() -> dict:  
+def _base_document_content() -> dict:  
     """  
     Minimal semantic payload used for stable ID testing.  
     Structure is intentionally simple but nested.  
@@ -75,7 +75,7 @@ def _make_finding(
         raw_finding=raw,  
         source=FindingSource.SEMANTIC_AUDIT,  
         sequence=sequence,  
-        semantic_payload=payload,  
+        document_content=payload,  
     )  
   
   
@@ -84,7 +84,7 @@ def _make_finding(
 # ---------------------------------------------------------------------------  
   
 def test_stable_finding_id_is_deterministic_across_runs():  
-    payload = _base_semantic_payload()  
+    payload = _base_document_content()  
   
     finding_1 = _make_finding(  
         payload=payload,  
@@ -99,7 +99,7 @@ def test_stable_finding_id_is_deterministic_across_runs():
   
   
 def test_finding_id_is_invariant_to_json_key_order():  
-    payload_a = _base_semantic_payload()  
+    payload_a = _base_document_content()  
     payload_b = {  
         "terms": payload_a["terms"],  
         "parties": payload_a["parties"],  
@@ -119,7 +119,7 @@ def test_finding_id_is_invariant_to_json_key_order():
   
   
 def test_finding_id_changes_when_location_changes():  
-    payload = _base_semantic_payload()  
+    payload = _base_document_content()  
   
     finding_a = _make_finding(  
         payload=payload,  
@@ -134,7 +134,7 @@ def test_finding_id_changes_when_location_changes():
   
   
 def test_finding_id_changes_when_payload_changes():  
-    payload_original = _base_semantic_payload()  
+    payload_original = _base_document_content()  
     payload_modified = copy.deepcopy(payload_original)  
     payload_modified["terms"]["payment"]["amount"] = "2000"  
   
@@ -154,7 +154,7 @@ def test_finding_id_is_invariant_to_sequence_number():
     """  
     Execution order may change, but finding identity must not.  
     """  
-    payload = _base_semantic_payload()  
+    payload = _base_document_content()  
   
     finding_a = _make_finding(  
         payload=payload,  

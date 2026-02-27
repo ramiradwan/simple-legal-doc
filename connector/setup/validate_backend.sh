@@ -99,10 +99,10 @@ PAYLOAD2='{"subject": "Header check", "author": "Validation Suite", "doc_date": 
 
 HEADERS=$(curl -s -D - -o /dev/null -X POST "$BACKEND/generate/compliance-test-doc?mode=draft" -H "Content-Type: application/json" -d "$PAYLOAD2") 
  
-if echo "$HEADERS" | grep -qi "^X-Semantic-Hash:"; then 
-    pass "X-Semantic-Hash header present in draft response" 
+if echo "$HEADERS" | grep -qi "^X-Content-Hash:"; then 
+    pass "X-Content-Hash header present in draft response" 
 else 
-    fail "X-Semantic-Hash header missing from draft response" 
+    fail "X-Content-Hash header missing from draft response" 
 fi
 
 # ---------------------------------------------------------------------------

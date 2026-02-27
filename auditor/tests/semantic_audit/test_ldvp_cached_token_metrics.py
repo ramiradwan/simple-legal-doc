@@ -23,8 +23,8 @@ def test_cached_token_metrics_emitted():
         )  
   
         result = await pipeline.run(  
-            embedded_text="Short document.",  
-            embedded_payload={"schema_version": "1.0"},  
+            content_derived_text="Short document.",  
+            document_content={"schema_version": "1.0"},  
             visible_text="Visible text",  
             audit_id="audit-tokens-001",  
         )  

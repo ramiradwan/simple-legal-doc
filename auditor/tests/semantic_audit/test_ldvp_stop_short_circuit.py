@@ -84,8 +84,8 @@ def test_ldvp_stop_condition_short_circuits_semantic_passes_only():
         )  
   
         result = await pipeline.run(  
-            embedded_text="Embedded document text",  
-            embedded_payload={"doc_id": "123"},  
+            content_derived_text="Embedded document text",  
+            document_content={"doc_id": "123"},  
             visible_text="Visible text",  
             audit_id="audit-stop-001",  
         )  

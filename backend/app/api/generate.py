@@ -1,24 +1,29 @@
 """  
 Document generation endpoint.  
   
-Clients supply semantic content only. Canonicalization, hashing,  
-rendering, archival normalization, and cryptographic sealing are  
-performed exclusively by this engine.  
+Clients supply **Document Content only**.  
+  
+Canonicalization, hashing, deterministic rendering, archival normalization,  
+and cryptographic sealing are performed exclusively by this engine.  
   
 Two execution modes are supported via the ?mode query parameter:  
   
-    draft   Jinja2 render → LuaLaTeX compile → return PDF.  
-            Skips PDF/A-3b normalization and cryptographic sealing.  
-            Intended for iterative refinement cycles.  
+    draft  
+        Jinja2 render → LuaLaTeX compile → return PDF.  
+        Skips PDF/A-3b normalization and cryptographic sealing.  
+        Intended for iterative refinement cycles only.  
   
-    final   Jinja2 render → LuaLaTeX compile → Ghostscript PDF/A-3b  
-            normalization → cryptographic sealing → return PDF.  
-            Produces an archival-grade artifact.  
+    final  
+        Jinja2 render → LuaLaTeX compile → Ghostscript PDF/A-3b  
+        normalization → cryptographic sealing → return PDF.  
+        Produces a Finalized PDF Artifact suitable for downstream trust workflows.  
   
-Both modes compute the semantic hash before rendering and inject it  
-as the X-Semantic-Hash response header so that downstream consumers  
-(including the MCP connector) can surface it without parsing the PDF.  
+Both modes compute the declared Document Content hash *before rendering* and  
+expose it via the X-Content-Hash response header so that downstream consumers  
+(including connectors) may surface it without parsing the PDF artifact.  
 """  
+  
+from __future__ import annotations  
   
 import io  
 import json  
@@ -38,15 +43,19 @@ from app.services.signing import sign_pdf
 from app.utils.hashing import compute_document_hash  
   
 logger = logging.getLogger(__name__)  
-  
 router = APIRouter()  
   
 # ---------------------------------------------------------------------------  
 # Canonical serialization helpers  
 # ---------------------------------------------------------------------------  
   
-  
 def _canonical_json_default(obj: Any) -> str:  
+    """  
+    Deterministic JSON fallback for canonicalization.  
+  
+    Decimal values are serialized as strings to preserve precision and  
+    avoid float round‑trip ambiguity.  
+    """  
     if isinstance(obj, Decimal):  
         return str(obj)  
     raise TypeError(  
@@ -54,9 +63,25 @@ def _canonical_json_default(obj: Any) -> str:
     )  
   
   
-def _canonicalize_semantic_payload(payload: Dict[str, Any]) -> bytes:  
+def _canonicalize_document_content(content: Dict[str, Any]) -> bytes:  
+    """  
+    Canonicalize Document Content for hashing and archival embedding.  
+  
+    This function performs deterministic JSON serialization using:  
+    - stable key ordering  
+    - explicit separators  
+    - UTF‑8 encoding  
+  
+    AUTHORITATIVE SCOPE:  
+    - Only Document Content is canonicalized.  
+    - Bindings, metadata, and signatures are explicitly excluded.  
+    - The returned bytes are the SINGLE source of truth for:  
+        * Document Content hashing  
+        * PDF/A‑3 associated file embedding  
+        * downstream verification and audit  
+    """  
     return json.dumps(  
-        payload,  
+        content,  
         sort_keys=True,  
         ensure_ascii=False,  
         separators=(",", ":"),  
@@ -68,7 +93,6 @@ def _canonicalize_semantic_payload(payload: Dict[str, Any]) -> bytes:
 # Route  
 # ---------------------------------------------------------------------------  
   
-  
 @router.post(  
     "/{template_id}",  
     summary="Generate a PDF document artifact",  
@@ -79,8 +103,8 @@ def generate_document(
         default="final",  
         description=(  
             "Execution mode. "  
-            "'draft' skips normalization and sealing for fast iteration. "  
-            "'final' produces a fully normalized, sealed archival artifact."  
+            "'draft' skips archival normalization and cryptographic sealing. "  
+            "'final' produces a fully normalized, sealed Finalized PDF Artifact."  
         ),  
     ),  
     payload: Dict[str, Any] = Body(...),  
@@ -88,9 +112,10 @@ def generate_document(
     """  
     Generate a PDF document artifact from a registered template.  
   
-    Returns application/pdf. The X-Semantic-Hash response header carries  
-    the SHA-256 hash of the canonical semantic payload, computed before  
-    rendering.  
+    Returns application/pdf.  
+  
+    The X-Content-Hash response header carries the SHA‑256 declared  
+    Document Content hash computed prior to rendering.  
     """  
   
     # ------------------------------------------------------------------  
@@ -104,7 +129,7 @@ def generate_document(
         )  
   
     # ------------------------------------------------------------------  
-    # Payload validation  
+    # Payload validation (Document Content only)  
     # ------------------------------------------------------------------  
     try:  
         validated_payload = entry.schema.model_validate(payload)  
@@ -112,18 +137,24 @@ def generate_document(
         raise HTTPException(status_code=422, detail=str(exc)) from exc  
   
     # ------------------------------------------------------------------  
-    # Canonicalization and semantic integrity hash (two-pass)  
+    # Document Content extraction and canonicalization  
     # ------------------------------------------------------------------  
-    semantic_payload: Dict[str, Any] = validated_payload.model_dump()  
+    document_content: Dict[str, Any] = validated_payload.model_dump()  
   
-    # First pass: hash without document_hash  
-    semantic_payload["document_hash"] = None  
-    canonical_bytes = _canonicalize_semantic_payload(semantic_payload)  
-    document_hash = compute_document_hash(canonical_bytes)  
+    canonical_content_bytes = _canonicalize_document_content(  
+        document_content  
+    )  
   
-    # Second pass: final canonical payload  
-    semantic_payload["document_hash"] = document_hash  
-    final_canonical_bytes = _canonicalize_semantic_payload(semantic_payload)  
+    declared_content_hash = compute_document_hash(canonical_content_bytes)  
+  
+    # ------------------------------------------------------------------  
+    # Bindings metadata (supplemental, NOT hashed)  
+    # ------------------------------------------------------------------  
+    bindings: Dict[str, Any] = {  
+        "content_hash": declared_content_hash,  
+        "hash_algorithm": "SHA-256",  
+        "generation_mode": mode,  
+    }  
   
     # ------------------------------------------------------------------  
     # Rendering pipeline  
@@ -132,25 +163,53 @@ def generate_document(
         with tempfile.TemporaryDirectory() as tmp:  
             tmpdir = Path(tmp)  
   
-            payload_path = tmpdir / "semantic-payload.json"  
-            payload_path.write_bytes(final_canonical_bytes)  
+            # ----------------------------------------------------------  
+            # Persist authoritative Document Content (byte‑for‑byte)  
+            # ----------------------------------------------------------  
+            content_path = tmpdir / "content.json"  
+            content_path.write_bytes(canonical_content_bytes)  
   
-            # Shared: Jinja2 render + LuaLaTeX compile  
+            # ----------------------------------------------------------  
+            # Persist bindings metadata separately (non‑authoritative)  
+            # ----------------------------------------------------------  
+            bindings_path = tmpdir / "bindings.json"  
+            bindings_path.write_text(  
+                json.dumps(  
+                    bindings,  
+                    sort_keys=True,  
+                    ensure_ascii=False,  
+                    separators=(",", ":"),  
+                ),  
+                encoding="utf-8",  
+            )  
+  
+            # ----------------------------------------------------------  
+            # Shared pipeline: Jinja2 render + LuaLaTeX compile  
+            # ----------------------------------------------------------  
             rendered_pdf = render_and_compile_pdf_to_path(  
                 template_path=entry.template_path,  
-                semantic_payload=semantic_payload,  
+                document_content=document_content,  
+                bindings=bindings,  
                 outdir=tmpdir,  
             )  
   
             if mode == "draft":  
+                # Draft artifacts are intentionally NOT archival‑complete  
                 artifact_bytes = rendered_pdf.read_bytes()  
             else:  
+                # ------------------------------------------------------  
+                # PDF/A‑3b normalization with content hash binding  
+                # ------------------------------------------------------  
                 pdfa_pdf = tmpdir / "document_pdfa3.pdf"  
                 normalize_pdfa3(  
                     input_pdf=rendered_pdf,  
                     output_pdf=pdfa_pdf,  
+                    content_hash=declared_content_hash,  
                 )  
   
+                # ------------------------------------------------------  
+                # Cryptographic sealing (Finalized PDF Artifact)  
+                # ------------------------------------------------------  
                 sealed_artifact = tmpdir / "document_signed.pdf"  
                 sign_pdf(  
                     input_pdf=pdfa_pdf,  
@@ -179,8 +238,10 @@ def generate_document(
         io.BytesIO(artifact_bytes),  
         media_type="application/pdf",  
         headers={  
-            "Content-Disposition": f'inline; filename="{template_id}-{mode}.pdf"',  
-            "X-Semantic-Hash": document_hash,  
+            "Content-Disposition": (  
+                f'inline; filename="{template_id}-{mode}.pdf"'  
+            ),  
+            "X-Content-Hash": declared_content_hash,  
             "X-Generation-Mode": mode,  
         },  
     )  

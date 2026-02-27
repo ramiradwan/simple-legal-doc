@@ -7,18 +7,18 @@ from auditor.app.schemas.verification_report import (
     DeliveryRecommendation,  
 )  
 from auditor.app.schemas.findings import FindingSource, Severity  
-  
-from auditor.tests.fixtures.pdf_factory import semantic_bound_pdf  
+from auditor.tests.fixtures.pdf_factory import content_bound_pdf  
   
 pytestmark = pytest.mark.anyio  
   
   
-async def test_happy_path_semantic_document_passes_full_audit():  
+async def test_happy_path_content_bound_document_passes_full_audit():  
     """  
     Happy-path contract test.  
   
     This test defines the REQUIRED behavior for a fully valid,  
-    semantically bound, archival-grade document.  
+    content-bound, archival-grade document that conforms to the  
+    current backend and Auditor contracts.  
     """  
   
     config = AuditorConfig(  
@@ -28,11 +28,12 @@ async def test_happy_path_semantic_document_passes_full_audit():
     )  
   
     coordinator = AuditorCoordinator(config)  
-    pdf_bytes = semantic_bound_pdf()  
+  
+    pdf_bytes = content_bound_pdf()  
   
     report = await coordinator.run_audit(  
         pdf_bytes=pdf_bytes,  
-        audit_id="test-happy-path-semantic",  
+        audit_id="test-happy-path-content-bound",  
     )  
   
     # ------------------------------------------------------------------  
@@ -46,9 +47,9 @@ async def test_happy_path_semantic_document_passes_full_audit():
     # ------------------------------------------------------------------  
     assert report.artifact_integrity.passed is True  
   
-    # Canonical semantic snapshot must be present  
-    assert report.artifact_integrity.embedded_text  
-    assert report.artifact_integrity.embedded_payload is not None  
+    # Authoritative document snapshot must be present  
+    assert report.artifact_integrity.document_content is not None  
+    assert report.artifact_integrity.content_derived_text is not None  
     assert report.artifact_integrity.visible_text is not None  
   
     # ------------------------------------------------------------------  

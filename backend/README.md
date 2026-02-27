@@ -2,7 +2,7 @@
   
 The Document Engine is the deterministic document construction component of the **simple‑legal‑doc** system.  
   
-It transforms schema‑validated semantic input into finalized, content‑complete PDF/A‑3b document artifacts with stable layout, reproducible pagination, and embedded machine‑readable semantics.  
+It transforms schema‑validated structured input into finalized, content‑complete PDF/A‑3b document artifacts with stable layout, reproducible pagination, and embedded machine‑readable content.  
   
 The engine does **not** apply authoritative or trust‑asserting cryptographic signatures and does **not** assert document trust.  
   
@@ -12,10 +12,10 @@ The engine does **not** apply authoritative or trust‑asserting cryptographic s
   
 The backend is responsible for:  
   
-- Validating structured semantic input against explicit schemas  
-- Canonicalizing semantic payloads deterministically  
+- Validating structured input against explicit schemas  
+- Canonicalizing input payloads deterministically  
 - Rendering documents using controlled LuaLaTeX templates  
-- Embedding canonical semantic payloads into the PDF (PDF/A‑3)  
+- Embedding canonical payloads into the PDF (PDF/A‑3 associated files)  
 - Normalizing output to PDF/A‑3b for archival use  
 - Producing finalized, unsigned PDF artifacts suitable for sealing  
   
@@ -29,7 +29,7 @@ The backend does **not**:
 - Handle production private key material  
 - Assert trust, legal effect, or document authenticity  
 - Verify signed artifacts  
-- Interpret or infer document semantics beyond schema validation  
+- Interpret or infer document meaning beyond schema validation  
   
 Cryptographic sealing and verification are delegated to separate services.  
   
@@ -37,9 +37,9 @@ Cryptographic sealing and verification are delegated to separate services.
   
 ## Input Model  
   
-### Semantic Payload  
+### Structured Payload  
   
-The backend accepts structured semantic payloads encoded as JSON.  
+The backend accepts structured payloads encoded as JSON.  
   
 Key characteristics:  
   
@@ -63,21 +63,21 @@ Example:
   
 ---  
   
-## Canonicalization and Semantic Integrity  
+## Canonicalization and Content Integrity  
   
-Before rendering, semantic payloads are:  
+Before rendering, input payloads are:  
   
 1. Validated  
 2. Canonicalized using deterministic JSON serialization  
 3. Hashed using SHA‑256  
   
-The resulting semantic hash is:  
+The resulting content hash is:  
   
-- Embedded into the document’s semantic context  
+- Embedded into the document’s integrity metadata  
 - Rendered visibly in the document  
 - Preserved for downstream cryptographic coverage  
   
-This establishes a verifiable relationship between approved semantic content and the rendered artifact.  
+This establishes a verifiable relationship between the approved input and the rendered artifact.  
   
 ---  
   
@@ -104,8 +104,8 @@ Rendered output is normalized to PDF/A‑3b using Ghostscript, ensuring:
 The backend produces a **single authoritative artifact**:  
   
 - A finalized, content‑complete PDF/A‑3b document  
-- Embedded canonical semantic payload (PDF/A‑3 associated file)  
-- Rendered semantic integrity hash  
+- Embedded canonical payload (PDF/A‑3 associated file)  
+- Rendered content integrity hash  
   
 Artifacts produced by the backend are immutable inputs to downstream sealing and verification systems.  
   
@@ -136,7 +136,7 @@ API routes, schemas, and document types are defined in:
   
 Each supported document type is registered explicitly with:  
   
-- A semantic schema  
+- A schema defining the expected input structure  
 - A LaTeX template  
 - Descriptive metadata  
   
@@ -153,7 +153,7 @@ The following environment variables affect backend behavior:
   
 ### Signing Backend Selection  
   
-- `SIGNING_BACKEND`
+- `SIGNING_BACKEND`  
   Selects the signing mode:  
   - `local` — non‑authoritative local PKCS#12 signing (development only)  
   - `http` — external signer sidecar (production / regulated use)  
@@ -162,9 +162,9 @@ The following environment variables affect backend behavior:
   
 Used when `SIGNING_BACKEND=local`:  
   
-- `SIGNING_P12_PATH`
+- `SIGNING_P12_PATH`  
   Path to a development PKCS#12 certificate bundle.  
-- `SIGNING_P12_PASSWORD`
+- `SIGNING_P12_PASSWORD`  
   Password for the PKCS#12 bundle.  
   
 Local signing is provided solely for development and testing convenience and does **not** establish production‑grade trust, legal effect, or audit assurance.  
@@ -173,7 +173,7 @@ Local signing is provided solely for development and testing convenience and doe
   
 Used when `SIGNING_BACKEND=http`:  
   
-- `SIGNING_HTTP_URL`
+- `SIGNING_HTTP_URL`  
   HTTP endpoint of the signer sidecar (e.g. `/sign-archival`).  
   
 ### Out of Scope  
@@ -198,4 +198,4 @@ See: [`../.env.example`](../.env.example)
   
 - **Auditor**  
   Performs independent, post‑generation verification of sealed artifacts.  
-  - [`auditor/README.md`](../auditor/README.md)
+  - [`auditor/README.md`](../auditor/README.md)  

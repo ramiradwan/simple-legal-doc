@@ -51,8 +51,8 @@ def test_ldvp_prompt_prefix_is_strictly_invariant_across_passes():
         # Use a text shorter than the P1 slicer limit (6,000 chars)  
         # to ensure P1 uses the exact same text projection.  
         await pipeline.run(  
-            embedded_text="Stable document text for cache testing.",  
-            embedded_payload={  
+            content_derived_text="Stable document text for cache testing.",  
+            document_content={  
                 "schema_version": "1.0",  
                 "author": "system",  
             },  

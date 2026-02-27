@@ -1,10 +1,10 @@
 # simple-legal-doc  
   
-**simple-legal-doc** is a containerized system for producing verifiable, archival‑grade PDF document artifacts from structured semantic data.  
+**simple-legal-doc** is a containerized system for producing verifiable, archival‑grade PDF document artifacts from structured data describing document facts and state.  
   
 The system is designed for automated and human‑in‑the‑loop workflows that require deterministic output, reproducibility, and cryptographic integrity, particularly in legal, governmental, and financial contexts.  
   
-Rather than treating documents as visual exports, this project treats them as engineered artifacts whose semantic content, visual representation, and integrity properties are explicitly defined and independently verifiable.  
+Rather than treating documents as visual exports, this project treats them as engineered artifacts whose content, visual representation, and integrity properties are explicitly defined and independently verifiable.  
   
 ---  
   
@@ -14,10 +14,10 @@ The repository contains multiple loosely coupled services, each with a clearly d
   
 | Component | Responsibility |  
 |---------|---------------|  
-| **Document Engine (backend)** | Deterministic construction of content‑complete PDF artifacts from semantic input |  
+| **Document Engine (backend)** | Deterministic construction of content‑complete PDF artifacts from structured input |  
 | **Seal‑Engine (signer sidecar)** | Cryptographic sealing of finalized PDF artifacts |  
 | **Auditor** | Independent, post‑generation verification of document artifacts |  
-| **Frontend (optional)** | Reference UI for semantic review and approval workflows |  
+| **Frontend (optional)** | Reference UI for document review and approval workflows |  
   
 Each component may be deployed, operated, and audited independently.  
   
@@ -35,7 +35,7 @@ In practice, most automated PDF generation pipelines follow one of two approache
 - **Manual LaTeX workflows**  
   Capable of high‑quality typesetting, but historically difficult to integrate safely into automated, API‑driven systems.  
   
-**simple-legal-doc** takes a constraint‑driven approach. LuaLaTeX is treated as the authoritative rendering engine, while all document content is supplied as schema‑validated semantic data via an HTTP API.  
+**simple-legal-doc** takes a constraint‑driven approach. LuaLaTeX is treated as the authoritative rendering engine, while all document content is supplied as schema‑validated structured data via an HTTP API.  
   
 This allows LaTeX‑grade typography to be used in automated systems without exposing layout control, execution privileges, or template logic to callers.  
   
@@ -43,9 +43,9 @@ This allows LaTeX‑grade typography to be used in automated systems without exp
   
 ## Core System Properties  
   
-### 1. Semantic Input, Deterministic Output  
+### 1. Structured Input, Deterministic Output  
   
-Document content is supplied as structured semantic payloads (JSON) validated against explicit schemas.  
+Document content is supplied as structured JSON payloads validated against explicit schemas.  
   
 Clients provide facts and document state, not layout or formatting instructions. Typography, layout, and emphasis are defined exclusively in LaTeX templates.  
   
@@ -57,27 +57,27 @@ This results in:
   
 ---  
   
-### 2. Canonicalization and Semantic Integrity  
+### 2. Canonicalization and Content Integrity  
   
-Before rendering, semantic payloads are:  
+Before rendering, input payloads are:  
   
 1. Validated  
 2. Canonicalized using deterministic JSON serialization  
 3. Hashed using SHA‑256  
   
-The resulting semantic integrity hash establishes a verifiable relationship between the approved semantic content and the rendered artifact.  
+The resulting content hash establishes a verifiable relationship between the approved input and the rendered artifact.  
   
 ---  
   
-### 3. Embedded Machine‑Readable Semantics (PDF/A‑3)  
+### 3. Embedded Machine‑Readable Content (PDF/A‑3)  
   
-Canonical semantic payloads are embedded into the PDF as associated files using the PDF/A‑3 standard.  
+Canonical input payloads are embedded into the PDF as associated files using the PDF/A‑3 standard.  
   
 This enables:  
   
 - Deterministic downstream extraction without OCR  
-- Independent verification of document semantics  
-- Long‑term archival with preserved machine‑readable content  
+- Independent verification of document content  
+- Long‑term archival with preserved machine‑readable data  
   
 ---  
   
@@ -100,7 +100,7 @@ The Document Engine never accesses private key material. Sealing is performed by
 ## High‑Level Pipeline  
   
 ```text  
-Semantic JSON Payload  
+JSON Payload  
         ↓  
 Schema Validation  
         ↓  
@@ -122,7 +122,7 @@ The system is stateless and suitable for fully automated or human‑reviewed wor
 Each major component defines its own authoritative documentation.  
   
 📄 **Document Engine**: [`backend/README.md`](./backend/README.md)  
-> Deterministic document construction, semantic validation, rendering, and archival normalization.  
+> Deterministic document construction, input validation, rendering, and archival normalization.  
   
 🔐 **Seal‑Engine (Signer Sidecar)**: [`signer/README.md`](./signer/README.md)  
 > Cryptographic sealing of finalized PDF artifacts using managed signing infrastructure.  
@@ -165,11 +165,11 @@ docker compose build
 ```bash  
 docker compose up  
 ```  
-
+  
 > **Note**  
-For external signing mode, enable trusted profile explicitly:  
-
- ```bash  
+> For external signing mode, enable trusted profile explicitly:  
+  
+```bash  
 docker compose --profile trusted up  
 ```  
   
@@ -208,7 +208,7 @@ The system is built on the following assumptions:
 - Legal and institutional documents must be deterministic  
 - Trust is established through validation and verification, not assertions  
   
-By separating semantic input, presentation logic, cryptographic sealing, and verification, the system enables controlled document generation in automated environments while preserving reviewability and auditability.  
+By separating structured input, presentation logic, cryptographic sealing, and verification, the system enables controlled document generation in automated environments while preserving reviewability and auditability.  
   
 ---  
   
@@ -221,4 +221,4 @@ This project is intentionally not:
 - A document management system  
 - A general reporting framework  
   
-It is an infrastructure system for producing verifiable document artifacts.
+It is an infrastructure system for producing verifiable document artifacts.  

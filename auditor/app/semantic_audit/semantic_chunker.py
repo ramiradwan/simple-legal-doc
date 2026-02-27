@@ -12,6 +12,7 @@ class SemanticChunk:
     `chunk_id` MUST be deterministic and stable across runs  
     for identical documents (e.g. section-based identifiers).  
     """  
+  
     chunk_id: str  
     text: str  
   
@@ -26,5 +27,10 @@ class SemanticChunker(Protocol):
     - Never mutate input text  
     """  
   
-    def chunk(self, *, embedded_text: str, visible_text: str) -> Sequence[SemanticChunk]:  
+    def chunk(  
+        self,  
+        *,  
+        content_derived_text: str,  
+        visible_text: str,  
+    ) -> Sequence[SemanticChunk]:  
         ...  
