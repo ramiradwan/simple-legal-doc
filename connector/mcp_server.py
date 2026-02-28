@@ -28,6 +28,7 @@ Tool annotation note:
     API is present in the installed mcp package version before deployment.
 """
 
+import json
 import logging
 import sys
 import time
@@ -35,6 +36,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 import httpx
+from httpx_sse import aconnect_sse
 
 # ---------------------------------------------------------------------------
 # 1. Startup timing — begin
@@ -67,6 +69,8 @@ from config import (
     safe_artifact_path,
     validate_workspace,
 )
+
+from utils.pii_monitor import scan_for_pii
 
 if X402_ENABLED:
     from payments import x402_post
@@ -388,7 +392,7 @@ async def generate_final(slug: str, payload: dict, ctx: Context) -> dict:
         idempotentHint=True,
     )
 )
-async def audit_document(file_path: str) -> dict:
+async def audit_document(file_path: str, ctx: Context) -> dict:
     """
     Submit a generated PDF artifact to the Auditor for verification.
 
@@ -403,7 +407,9 @@ async def audit_document(file_path: str) -> dict:
     """
     logger.info("tool: audit_document file_path=%s", file_path)
 
-    # Validate path containment before opening any file.
+    # ------------------------------------------------------------------
+    # Path containment — must run before any network call.
+    # ------------------------------------------------------------------
     candidate = Path(file_path).resolve()
     try:
         candidate.relative_to(WORKSPACE_DIR)
@@ -418,29 +424,119 @@ async def audit_document(file_path: str) -> dict:
     if not candidate.is_file():
         return {"error": f"Path is not a file: {candidate}"}
 
-    try:
-        with candidate.open("rb") as f:
-            response = await _http_client.post(
-                f"{AUDITOR_URL}/audit",
-                files={"pdf": (candidate.name, f, "application/pdf")},
-                timeout=60.0,
-            )
-            response.raise_for_status()
-    except httpx.HTTPStatusError as exc:
-        logger.error(
-            "audit_document: HTTP %s body=%s",
-            exc.response.status_code,
-            exc.response.text[:200],
-        )
-        return {
-            "error": f"Auditor returned {exc.response.status_code}",
-            "detail": exc.response.text[:200],
-        }
-    except httpx.RequestError as exc:
-        logger.error("audit_document: connection error: %s", exc)
-        return {"error": "Auditor unreachable"}
+    # ------------------------------------------------------------------
+    # SSE streaming audit.
+    #
+    # Uses a dedicated client with a generous read timeout so silent
+    # phases (e.g. LDVP LLM execution) don't sever the connection.
+    # The global _http_client is not used here — its timeout config
+    # is unsuitable for long-lived streams and must not be polluted.
+    # ------------------------------------------------------------------
+    pdf_bytes = candidate.read_bytes()
+    progress = 0
 
-    return response.json()
+    # Progress labels matching the Auditor's AuditEventType enum.
+    # These provide human-readable updates to Claude's UI during the stream.
+    _progress_labels = {
+        "audit_started":                "Audit started...",
+        "artifact_integrity_started":   "Checking artifact integrity...",
+        "artifact_integrity_completed": "Artifact integrity verified.",
+        "semantic_audit_started":       "Starting semantic audit passes...",
+        "semantic_pass_started":        "Running semantic pass...",
+        "semantic_pass_completed":      "Semantic pass complete.",
+        "semantic_audit_completed":     "Semantic audit complete.",
+        "finding_discovered":           "Auditor recorded a finding.",
+        "llm_execution_started":        "LLM semantic execution started...",
+        "llm_execution_completed":      "LLM semantic execution complete.",
+        "seal_trust_started":           "Verifying cryptographic seal...",
+        "seal_trust_completed":         "Seal trust verified.",
+        "audit_report_ready":           "Finalizing report...",
+    }
+
+    try:
+        async with httpx.AsyncClient(
+            timeout=httpx.Timeout(connect=10.0, read=120.0, write=30.0, pool=10.0)
+        ) as client:
+            async with aconnect_sse(
+                client,
+                "POST",
+                f"{AUDITOR_URL}/audit/stream",
+                files={
+                    "pdf": (candidate.name, pdf_bytes, "application/pdf")
+                },
+            ) as event_source:
+                async for sse in event_source.aiter_sse():
+                    event_type = sse.event
+
+                    # --------------------------------------------------
+                    # Terminal: success
+                    # --------------------------------------------------
+                    if event_type == "audit_completed":
+                        try:
+                            details = json.loads(sse.data)
+                            report = details.get("details", {}).get("report")
+                            if report is None:
+                                logger.error(
+                                    "audit_document: AUDIT_COMPLETED missing report key"
+                                )
+                                return {"error": "Auditor completed but report was missing"}
+
+                            # --------------------------------------------------
+                            # Passive PII observability at trust-boundary egress
+                            # --------------------------------------------------
+                            detected_pii = scan_for_pii(report)
+                            if detected_pii:
+                                logger.warning(
+                                    "PII MONITOR (PASSIVE): Audit report returning "
+                                    "to Claude contains potential PII types: %s",
+                                    detected_pii,
+                                )
+                                await ctx.report_progress(
+                                    progress=progress + 1,
+                                    message=(
+                                        "Passive security monitor: potential PII detected "
+                                        f"in audit output ({', '.join(detected_pii)}). "
+                                        "No masking or enforcement applied."
+                                    )
+                                )
+
+                            logger.info("audit_document: completed successfully")
+                            return report
+                        except (ValueError, KeyError) as exc:
+                            logger.error(
+                                "audit_document: failed to parse AUDIT_COMPLETED payload: %s", exc
+                            )
+                            return {"error": "Malformed completion payload from Auditor"}
+
+                    # --------------------------------------------------
+                    # Terminal: failure
+                    # --------------------------------------------------
+                    if event_type == "audit_failed":
+                        try:
+                            details = json.loads(sse.data)
+                            error_msg = details.get("details", {}).get("error", "Audit failed")
+                        except (ValueError, KeyError):
+                            error_msg = "Audit failed (unparseable error payload)"
+                        logger.error("audit_document: AUDIT_FAILED: %s", error_msg)
+                        return {"error": error_msg}
+
+                    # --------------------------------------------------
+                    # Intermediate: forward progress to Claude
+                    # --------------------------------------------------
+                    progress += 1
+                    label = _progress_labels.get(event_type, f"Auditor event: {event_type}")
+                    logger.debug("audit_document: event=%s progress=%d", event_type, progress)
+                    
+                    # Send both numeric progress and the human-readable label
+                    await ctx.report_progress(progress=progress, message=label)
+
+        # Stream ended without a terminal event — treat as failure.
+        logger.error("audit_document: stream ended without AUDIT_COMPLETED or AUDIT_FAILED")
+        return {"error": "Auditor stream closed unexpectedly"}
+
+    except httpx.RequestError as exc:
+        logger.error("audit_document: stream error: %s", exc)
+        return {"error": f"Auditor unreachable: {exc}"}
 
 
 # ---------------------------------------------------------------------------
