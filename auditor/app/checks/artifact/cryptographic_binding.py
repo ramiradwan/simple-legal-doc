@@ -23,6 +23,7 @@ from __future__ import annotations
 import hashlib  
 import json  
 from typing import List, Optional, Tuple  
+from decimal import Decimal  
   
 from auditor.app.schemas.findings import (  
     FindingObject as Finding,  
@@ -37,6 +38,10 @@ from auditor.app.schemas.findings import (
 # Canonicalization & hashing  
 # ------------------------------------------------------------------  
   
+def _json_default(obj):  
+    if isinstance(obj, Decimal):  
+        return str(obj)  
+    raise TypeError  
   
 def _canonicalize_content_payload(content: dict) -> Optional[bytes]:  
     """  
@@ -58,6 +63,7 @@ def _canonicalize_content_payload(content: dict) -> Optional[bytes]:
             ensure_ascii=False,  
             separators=(",", ":"),  
             sort_keys=True,  
+            default=_json_default,  
         )  
         return canonical.encode("utf-8")  
     except Exception:  

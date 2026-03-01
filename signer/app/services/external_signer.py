@@ -46,6 +46,46 @@ from signer.app.services.azure_api import AzureArtifactSigningClient
   
 logger = logging.getLogger("signer.external_signer")  
   
+# =============================================================================  
+# PDF/A /Metadata immutability patch  
+# =============================================================================
+  
+_orig_mark_update = getattr(IncrementalPdfFileWriter, "mark_update", None)  
+_orig_update_stream = getattr(IncrementalPdfFileWriter, "update_stream", None)  
+  
+  
+def _global_frozen_mark_update(self, obj_ref, *args, **kwargs):  
+    meta_ref = self.root.raw_get("/Metadata")  
+    if meta_ref:  
+        if (  
+            getattr(obj_ref, "idnum", None) == getattr(meta_ref, "idnum", None)  
+            and getattr(obj_ref, "generation", None)  
+            == getattr(meta_ref, "generation", None)  
+        ):  
+            logger.debug("Dropped pyHanko metadata mutation (mark_update)")  
+            return  
+    if _orig_mark_update:  
+        return _orig_mark_update(self, obj_ref, *args, **kwargs)  
+  
+  
+def _global_frozen_update_stream(self, obj_ref, *args, **kwargs):  
+    meta_ref = self.root.raw_get("/Metadata")  
+    if meta_ref:  
+        if (  
+            getattr(obj_ref, "idnum", None) == getattr(meta_ref, "idnum", None)  
+            and getattr(obj_ref, "generation", None)  
+            == getattr(meta_ref, "generation", None)  
+        ):  
+            logger.debug("Dropped pyHanko metadata mutation (update_stream)")  
+            return  
+    if _orig_update_stream:  
+        return _orig_update_stream(self, obj_ref, *args, **kwargs)  
+  
+  
+IncrementalPdfFileWriter.mark_update = _global_frozen_mark_update  
+if _orig_update_stream:  
+    IncrementalPdfFileWriter.update_stream = _global_frozen_update_stream   
+
 # ==============================================================================  
 # Trust anchors  
 # ==============================================================================  

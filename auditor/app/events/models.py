@@ -89,9 +89,3 @@ class AuditEvent(BaseModel):
         extra="forbid",  
     )  
   
-    def to_sse_payload(self) -> str:  
-        """  
-        Formats the event safely for a Server-Sent Events (SSE) stream.  
-        """  
-        data = self.model_dump_json()  
-        return f"event: {self.event_type.value}\ndata: {data}\n\n"  

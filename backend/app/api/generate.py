@@ -3,19 +3,19 @@ Document generation endpoint.
   
 Clients supply **Document Content only**.  
   
-Canonicalization, hashing, deterministic rendering, archival normalization,  
-and cryptographic sealing are performed exclusively by this engine.  
+Canonicalization, hashing, deterministic rendering, and cryptographic sealing  
+are performed exclusively by this engine.  
   
 Two execution modes are supported via the ?mode query parameter:  
   
     draft  
         Jinja2 render → LuaLaTeX compile → return PDF.  
-        Skips PDF/A-3b normalization and cryptographic sealing.  
+        Skips cryptographic sealing.  
         Intended for iterative refinement cycles only.  
   
     final  
-        Jinja2 render → LuaLaTeX compile → Ghostscript PDF/A-3b  
-        normalization → cryptographic sealing → return PDF.  
+        Jinja2 render → LuaLaTeX compile (PDF/A‑3b by construction)  
+        → cryptographic sealing → return PDF.  
         Produces a Finalized PDF Artifact suitable for downstream trust workflows.  
   
 Both modes compute the declared Document Content hash *before rendering* and  
@@ -38,7 +38,6 @@ from fastapi.responses import StreamingResponse
   
 from app.registry.registry import TEMPLATE_REGISTRY  
 from app.services.latex import render_and_compile_pdf_to_path  
-from app.services.pdf_postprocess import normalize_pdfa3  
 from app.services.signing import sign_pdf  
 from app.utils.hashing import compute_document_hash  
   
@@ -67,18 +66,9 @@ def _canonicalize_document_content(content: Dict[str, Any]) -> bytes:
     """  
     Canonicalize Document Content for hashing and archival embedding.  
   
-    This function performs deterministic JSON serialization using:  
-    - stable key ordering  
-    - explicit separators  
-    - UTF‑8 encoding  
-  
     AUTHORITATIVE SCOPE:  
     - Only Document Content is canonicalized.  
     - Bindings, metadata, and signatures are explicitly excluded.  
-    - The returned bytes are the SINGLE source of truth for:  
-        * Document Content hashing  
-        * PDF/A‑3 associated file embedding  
-        * downstream verification and audit  
     """  
     return json.dumps(  
         content,  
@@ -103,8 +93,8 @@ def generate_document(
         default="final",  
         description=(  
             "Execution mode. "  
-            "'draft' skips archival normalization and cryptographic sealing. "  
-            "'final' produces a fully normalized, sealed Finalized PDF Artifact."  
+            "'draft' skips cryptographic sealing. "  
+            "'final' produces a sealed Finalized PDF Artifact."  
         ),  
     ),  
     payload: Dict[str, Any] = Body(...),  
@@ -137,7 +127,7 @@ def generate_document(
         raise HTTPException(status_code=422, detail=str(exc)) from exc  
   
     # ------------------------------------------------------------------  
-    # Document Content extraction and canonicalization  
+    # Document Content canonicalization  
     # ------------------------------------------------------------------  
     document_content: Dict[str, Any] = validated_payload.model_dump()  
   
@@ -194,25 +184,14 @@ def generate_document(
             )  
   
             if mode == "draft":  
-                # Draft artifacts are intentionally NOT archival‑complete  
                 artifact_bytes = rendered_pdf.read_bytes()  
             else:  
-                # ------------------------------------------------------  
-                # PDF/A‑3b normalization with content hash binding  
-                # ------------------------------------------------------  
-                pdfa_pdf = tmpdir / "document_pdfa3.pdf"  
-                normalize_pdfa3(  
-                    input_pdf=rendered_pdf,  
-                    output_pdf=pdfa_pdf,  
-                    content_hash=declared_content_hash,  
-                )  
-  
                 # ------------------------------------------------------  
                 # Cryptographic sealing (Finalized PDF Artifact)  
                 # ------------------------------------------------------  
                 sealed_artifact = tmpdir / "document_signed.pdf"  
                 sign_pdf(  
-                    input_pdf=pdfa_pdf,  
+                    input_pdf=rendered_pdf,  
                     output_pdf=sealed_artifact,  
                     reason="Document issued by simple-legal-doc",  
                     location="Automated document service",  

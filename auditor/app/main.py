@@ -5,9 +5,9 @@ This module defines the public HTTP interface for document verification.
 It accepts finalized PDF artifacts, invokes the central coordinator, and  
 returns a structured VerificationReport.  
   
-The application is intentionally stateless and operates under a zero-trust  
-model: the PDF artifact is the sole source of truth. No assumptions are made  
-about the document generation process, drafting agent, or signing backend.  
+The application is intentionally stateless and follows a zero-trust model:  
+the PDF artifact itself is treated as the sole source of truth. No assumptions  
+are made about the document generation process, drafting agent, or signing backend.  
 """  
   
 from __future__ import annotations  
@@ -17,9 +17,11 @@ import json
 from pathlib import Path  
 from typing import Any  
 from uuid import uuid4  
+from collections.abc import AsyncIterable  
   
 from fastapi import FastAPI, File, UploadFile, HTTPException  
-from fastapi.responses import JSONResponse, StreamingResponse  
+from fastapi.responses import JSONResponse  
+from fastapi.sse import EventSourceResponse, ServerSentEvent  
 from starlette.responses import Response  
   
 from auditor.app.config import AuditorConfig  
@@ -41,17 +43,15 @@ from auditor.app.events import MemoryQueueEventEmitter
   
   
 # ---------------------------------------------------------------------------  
-# Presentation helpers (presentation-only)  
+# Presentation helpers  
 # ---------------------------------------------------------------------------  
   
 def pretty_json(data: Any) -> str:  
     """  
     Pretty-print JSON for human-readable output.  
   
-    PRESENTATION ONLY:  
-    - MUST NOT be used for archival  
-    - MUST NOT be embedded  
-    - MUST NOT be signed  
+    This helper is intended for presentation only and is not used for  
+    archival, embedding, or cryptographic workflows.  
     """  
     return json.dumps(  
         data,  
@@ -66,14 +66,62 @@ class PrettyJSONResponse(Response):
     """  
     Pretty-printed JSON response for human-readable console output.  
   
-    This is a PRESENTATION concern only and MUST NOT be used for  
-    archival, embedding, or cryptographic workflows.  
+    This response class is a presentation concern only and is not used  
+    for archival or signing-related workflows.  
     """  
   
     media_type = "application/json"  
   
     def render(self, content: Any) -> bytes:  
         return pretty_json(content).encode("utf-8")  
+  
+  
+# ---------------------------------------------------------------------------  
+# PDF ingestion / preflight (request-level)  
+# ---------------------------------------------------------------------------  
+  
+async def ingest_pdf_or_400(  
+    pdf: UploadFile,  
+    config: AuditorConfig,  
+) -> bytes:  
+    """  
+    Ingest and preflight a PDF upload.  
+  
+    This function performs request-level sanity checks and enforces  
+    configured resource limits. It does not perform any verification  
+    or make trust assertions about the document.  
+    """  
+    if pdf.content_type != "application/pdf":  
+        raise HTTPException(  
+            status_code=400,  
+            detail="Only application/pdf content is supported",  
+        )  
+  
+    try:  
+        pdf_bytes = await pdf.read()  
+    except Exception as exc:  
+        raise HTTPException(  
+            status_code=400,  
+            detail="Failed to read uploaded PDF",  
+        ) from exc  
+  
+    if not pdf_bytes:  
+        raise HTTPException(  
+            status_code=400,  
+            detail="Uploaded PDF is empty",  
+        )  
+  
+    max_size_bytes = config.MAX_PDF_SIZE_MB * 1024 * 1024  
+    if len(pdf_bytes) > max_size_bytes:  
+        raise HTTPException(  
+            status_code=413,  
+            detail=(  
+                f"PDF exceeds maximum allowed size of "  
+                f"{config.MAX_PDF_SIZE_MB} MB"  
+            ),  
+        )  
+  
+    return pdf_bytes  
   
   
 # ---------------------------------------------------------------------------  
@@ -97,8 +145,7 @@ def startup_event() -> None:
     Application startup hook.  
   
     Configuration is loaded once and treated as immutable for the lifetime  
-    of the process. All probabilistic or external dependencies are wired  
-    explicitly here.  
+    of the process. External and probabilistic dependencies are wired here.  
     """  
     config = AuditorConfig.from_env()  
   
@@ -114,7 +161,7 @@ def startup_event() -> None:
             )  
   
         # -----------------------------  
-        # Paths & File Loading  
+        # Paths & file loading  
         # -----------------------------  
         prompts_dir = (  
             Path(__file__).parent  
@@ -207,40 +254,8 @@ async def audit_document(
   
     The PDF itself is treated as the sole source of truth.  
     """  
-    if pdf.content_type != "application/pdf":  
-        raise HTTPException(  
-            status_code=400,  
-            detail="Only application/pdf content is supported",  
-        )  
-  
-    try:  
-        pdf_bytes = await pdf.read()  
-    except Exception as exc:  
-        raise HTTPException(  
-            status_code=400,  
-            detail="Failed to read uploaded PDF",  
-        ) from exc  
-  
-    if not pdf_bytes:  
-        raise HTTPException(  
-            status_code=400,  
-            detail="Uploaded PDF is empty",  
-        )  
-  
-    # ------------------------------------------------------------------  
-    # Hard resource safety limits (NOT trust decisions)  
-    # ------------------------------------------------------------------  
     config: AuditorConfig = app.state.config  
-    max_size_bytes = config.MAX_PDF_SIZE_MB * 1024 * 1024  
-  
-    if len(pdf_bytes) > max_size_bytes:  
-        raise HTTPException(  
-            status_code=413,  
-            detail=(  
-                f"PDF exceeds maximum allowed size of "  
-                f"{config.MAX_PDF_SIZE_MB} MB"  
-            ),  
-        )  
+    pdf_bytes = await ingest_pdf_or_400(pdf, config)  
   
     coordinator: AuditorCoordinator = app.state.coordinator  
   
@@ -256,53 +271,21 @@ async def audit_document(
   
 @app.post(  
     "/audit/stream",  
+    response_class=EventSourceResponse,  
     summary="Audit a finalized PDF document (streaming progress)",  
 )  
 async def audit_document_stream(  
     pdf: UploadFile = File(..., description="Finalized PDF artifact to audit"),  
-):  
+) -> AsyncIterable[ServerSentEvent]:  
     """  
     Perform an audit while streaming deterministic progress events.  
   
-    This endpoint is observational only:  
-    - Client disconnects do NOT cancel the audit  
-    - Events do NOT influence execution  
-    - Final AUDIT_COMPLETED event contains the VerificationReport  
+    This endpoint is observational: client disconnects do not cancel the audit,  
+    and streamed events do not influence execution. The final event contains  
+    the completed VerificationReport.  
     """  
-    if pdf.content_type != "application/pdf":  
-        raise HTTPException(  
-            status_code=400,  
-            detail="Only application/pdf content is supported",  
-        )  
-  
-    try:  
-        pdf_bytes = await pdf.read()  
-    except Exception as exc:  
-        raise HTTPException(  
-            status_code=400,  
-            detail="Failed to read uploaded PDF",  
-        ) from exc  
-  
-    if not pdf_bytes:  
-        raise HTTPException(  
-            status_code=400,  
-            detail="Uploaded PDF is empty",  
-        )  
-  
-    # ------------------------------------------------------------------  
-    # Hard resource safety limits (NOT trust decisions)  
-    # ------------------------------------------------------------------  
     config: AuditorConfig = app.state.config  
-    max_size_bytes = config.MAX_PDF_SIZE_MB * 1024 * 1024  
-  
-    if len(pdf_bytes) > max_size_bytes:  
-        raise HTTPException(  
-            status_code=413,  
-            detail=(  
-                f"PDF exceeds maximum allowed size of "  
-                f"{config.MAX_PDF_SIZE_MB} MB"  
-            ),  
-        )  
+    pdf_bytes = await ingest_pdf_or_400(pdf, config)  
   
     coordinator: AuditorCoordinator = app.state.coordinator  
     audit_id = str(uuid4())  
@@ -319,7 +302,6 @@ async def audit_document_stream(
                 emitter=emitter,  
             )  
         except Exception:  
-            # Coordinator already emitted AUDIT_FAILED  
             pass  
   
     asyncio.create_task(run_audit_task())  
@@ -327,22 +309,16 @@ async def audit_document_stream(
     # --------------------------------------------------------------  
     # SSE event stream  
     # --------------------------------------------------------------  
-    async def event_stream():  
-        try:  
-            async for event in emitter.stream():  
-                yield event.to_sse_payload()  
-        except asyncio.CancelledError:  
-            # Client disconnected; audit continues  
-            pass  
   
-    return StreamingResponse(  
-        event_stream(),  
-        media_type="text/event-stream",  
-        headers={  
-            "Cache-Control": "no-cache",  
-            "X-Accel-Buffering": "no",  
-        },  
-    )  
+    try:  
+        async for event in emitter.stream():  
+            yield ServerSentEvent(  
+                data=event.model_dump(),  
+                event=event.event_type.value,  
+                id=str(event.event_id),  
+            )  
+    except asyncio.CancelledError:  
+        pass  
   
   
 # ---------------------------------------------------------------------------  

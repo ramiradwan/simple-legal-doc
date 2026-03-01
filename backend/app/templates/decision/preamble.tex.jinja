@@ -1,24 +1,27 @@
 \RequirePackage{pdfmanagement-testphase}  
   
 % ==============================================================================  
-% FORCE PDF 1.7 (BEST EFFORT — PDF MANAGEMENT MAY OVERRIDE)  
-% MUST BE FIRST  
+% PDF VERSION AND COMPRESSION  
 % ==============================================================================  
-  
+% PDF/A-3b requires ISO 32000-1 (PDF 1.7)  
 \pdfvariable minorversion=7  
 \pdfvariable compresslevel=9  
   
 % ==============================================================================  
-% ARCHIVAL METADATA (PDF/A-3B — CLAIMED)  
+% ARCHIVAL METADATA (PDF/A-3b)  
 % ==============================================================================  
   
 \DocumentMetadata{  
   pdfstandard = A-3b,  
-  lang        = en-US  
+  pdfversion  = 1.7,  
+  lang        = en-US,  
+  colorprofiles = {  
+    sRGB.icc  
+  }  
 }  
   
 % ==============================================================================  
-% ENABLE TAGGING FOR CORRECT READING ORDER  
+% STRUCTURE TAGGING (DETERMINISTIC READING ORDER)  
 % ==============================================================================  
   
 \tagpdfsetup{  
@@ -62,7 +65,7 @@
 \newcommand{\DocHash}{\VAR{content_hash}}  
   
 % ==============================================================================  
-% TYPOGRAPHY  
+% TYPOGRAPHY (EXPLICIT, FULLY EMBEDDED FONTS)  
 % ==============================================================================  
   
 \usepackage{fontspec}  
@@ -71,9 +74,29 @@
 \usepackage{xcolor}  
 \usepackage{setspace}  
   
-\setmainfont{TeX Gyre Schola}[Numbers={Lining,Proportional}]  
-\setsansfont{TeX Gyre Heros}[Scale=MatchLowercase]  
-\setmonofont{TeX Gyre Cursor}[Scale=MatchLowercase]  
+% Enforce explicit font embedding and deterministic font selection  
+\defaultfontfeatures{  
+  Ligatures=TeX,  
+  Renderer=Basic,  
+  RawFeature={+embed}  
+}  
+  
+\setmainfont[  
+  Numbers={Lining,Proportional},  
+  UprightFont    = *-Regular,  
+  BoldFont       = *-Bold,  
+  ItalicFont     = *-Italic,  
+  BoldItalicFont = *-BoldItalic  
+]{TeXGyreSchola}  
+  
+\setsansfont[  
+  UprightFont = *-Regular,  
+  BoldFont    = *-Bold  
+]{TeXGyreHeros}  
+  
+\setmonofont[  
+  UprightFont = *-Regular  
+]{TeXGyreCursor}  
   
 \setstretch{1.2}  
   
@@ -88,7 +111,7 @@
 \addtokomafont{subsection}{\color{OxfordBlue}\sffamily\bfseries}  
   
 % ==============================================================================  
-% LEFT MARGIN DIGITAL SIGNATURE STRIP (ARTIFACT — NOT READABLE TEXT)  
+% LEFT MARGIN DIGITAL SIGNATURE STRIP (NON-READABLE)  
 % ==============================================================================  
   
 \usepackage{eso-pic,picture,rotating}  
@@ -119,30 +142,28 @@
   
 \sisetup{  
   detect-all,  
-  output-decimal-marker={,}, % locale-neutral decimal comma retained intentionally  
+  output-decimal-marker={,},  
   group-separator={\,},  
   group-minimum-digits=4  
 }  
   
 % ==============================================================================  
-% COMPONENTS (layout + semantic macros)  
+% COMPONENTS (LAYOUT + SEMANTIC MACROS)  
 % ==============================================================================  
   
 \input{decision/components/status_pill}  
 \input{decision/components/field_grid}  
 \BLOCK{ include "decision/components/financial_table.tex.jinja" }  
   
-% ------------------------------------------------------------------  
-% PDF/A META-ATTACHMENT MACROS (no package loading here)  
-% ------------------------------------------------------------------  
-  
+% ------------------------------------------------------------------------------  
+% PDF/A META-ATTACHMENT MACROS  
+% ------------------------------------------------------------------------------  
 \input{decision/components/meta_attachments}  
   
 % ==============================================================================  
-% HYPERREF (PDF/A-SAFE, TAGGING-COMPATIBLE)  
+% HYPERREF (PDF/A-COMPATIBLE)  
 % ==============================================================================  
-  
-\usepackage{hyperref}  
+\usepackage[pdfa=true,unicode]{hyperref}  
   
 \hypersetup{  
   pdftitle           = {\CaseSubject},  
@@ -151,9 +172,10 @@
   pdfdisplaydoctitle = true,  
   colorlinks         = true,  
   linkcolor          = OxfordBlue,  
-  urlcolor           = OxfordBlue,  
-  pdfencoding        = auto,  
-  psdextra  
+  urlcolor           = OxfordBlue  
 }  
   
+% ==============================================================================  
+% ASSOCIATED FILE ATTACHMENT SUPPORT (PDF/A-3)  
+% ==============================================================================  
 \usepackage{embedfile}  
